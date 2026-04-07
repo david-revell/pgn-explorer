@@ -1,0 +1,10 @@
+[Event "Example Game"]
+[Site "Local"]
+[Date "2024.01.01"]
+[Round "?"]
+[White "WhitePlayer"]
+[Black "BlackPlayer"]
+[Result "1-0"]
+[ECO "C20"]
+
+1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0
