@@ -42,6 +42,41 @@ Start the app:
 streamlit run app.py
 ```
 
+## Cleanup workflow
+
+The app is designed around source-first cleanup. If a game is bad, fix or delete it in `pgn/all.pgn`, then rerun the importer.
+
+Useful fields in the app:
+
+- `game_number`: the game's order in the PGN file
+- `source_line`: the starting line of the game in `pgn/all.pgn`
+- `id`: the current database row id after import
+
+The most reliable source reference is `source_line`, because it points directly into the PGN file.
+
+## Data quality checks
+
+The sidebar includes a `Data quality` filter with these checks:
+
+- `Missing result`: games with no result or `*`
+- `Missing moves`: games where no move text was imported
+- `Not my game`: games where neither White nor Black matches one of your usernames
+
+`My usernames` accepts a comma-separated list and matches case-insensitively. For example:
+
+```text
+peletis, Peletis, old_handle
+```
+
+## Typical cleanup loop
+
+1. Run `streamlit run app.py`
+2. Choose a `Data quality` filter
+3. Find the bad game and note its `source_line`
+4. Edit or delete that game in `pgn/all.pgn`
+5. Rerun `python import_pgn.py --pgn pgn/all.pgn`
+6. Refresh the app and repeat until the counts are clean
+
 ## Scope
 
 Current first version:

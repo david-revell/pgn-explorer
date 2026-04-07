@@ -3,6 +3,12 @@ from __future__ import annotations
 import streamlit as st
 
 
+def render_quality_summary(counts: dict[str, int]) -> None:
+    columns = st.columns(3)
+    for column, (label, value) in zip(columns, counts.items()):
+        column.metric(label, value)
+
+
 def render_game_summary(game: dict) -> None:
     st.subheader(f"{game['white']} vs {game['black']}")
     st.caption(

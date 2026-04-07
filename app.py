@@ -5,8 +5,8 @@ from pathlib import Path
 import streamlit as st
 
 from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
-from src.queries import load_game_by_id, load_games
-from src.viewer import render_game_summary
+from src.queries import load_game_by_id, load_games, load_quality_counts
+from src.viewer import render_game_summary, render_quality_summary
 
 
 def main() -> None:
@@ -32,6 +32,11 @@ def main() -> None:
 
         with st.sidebar:
             st.header("Filters")
+            usernames = st.text_input("My usernames", value="peletis")
+            quality_filter = st.selectbox(
+                "Data quality",
+                ["All games", "Missing result", "Missing moves", "Not my game"],
+            )
             database_id_text = st.text_input("Database ID")
             game_number_text = st.text_input("Game Number")
             player = st.text_input("Player")
@@ -43,6 +48,9 @@ def main() -> None:
         database_id = int(database_id_text) if database_id_text.strip().isdigit() else None
         game_number = int(game_number_text) if game_number_text.strip().isdigit() else None
 
+        st.subheader("Data Quality")
+        render_quality_summary(load_quality_counts(connection, usernames))
+
         games_df = load_games(
             connection=connection,
             database_id=database_id,
@@ -51,6 +59,8 @@ def main() -> None:
             color=color,
             result=result,
             eco_prefix=eco_prefix,
+            quality_filter=quality_filter,
+            usernames=usernames,
             limit=limit,
         )
 
