@@ -7,6 +7,8 @@ import pandas as pd
 
 def load_games(
     connection: sqlite3.Connection,
+    database_id: int | None = None,
+    game_number: int | None = None,
     player: str = "",
     color: str = "Either",
     result: str = "Any",
@@ -15,6 +17,14 @@ def load_games(
 ) -> pd.DataFrame:
     clauses: list[str] = []
     params: dict[str, object] = {"limit": limit}
+
+    if database_id is not None:
+        clauses.append("id = :database_id")
+        params["database_id"] = database_id
+
+    if game_number is not None:
+        clauses.append("game_number = :game_number")
+        params["game_number"] = game_number
 
     if player.strip():
         params["player"] = f"%{player.strip()}%"
@@ -37,10 +47,11 @@ def load_games(
 
     query = f"""
         SELECT
-            id, date, white, black, result, eco, white_elo, black_elo, event, site
+            id, game_number, source_line, date, white, black, result, eco,
+            white_elo, black_elo, event, site
         FROM games
         {where_sql}
-        ORDER BY date DESC, id DESC
+        ORDER BY game_number DESC
         LIMIT :limit
     """
     return pd.read_sql_query(query, connection, params=params)

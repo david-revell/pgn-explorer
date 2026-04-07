@@ -18,6 +18,8 @@ pip install -r requirements.txt
 
 ## Usage
 
+Each import rebuilds `data/games.db` from the PGN file you specify. In other words, rerunning the importer overwrites the current database contents with a fresh import from source.
+
 Import the sample PGN:
 
 ```powershell
@@ -29,6 +31,10 @@ Import your archive:
 ```powershell
 python import_pgn.py --pgn pgn/all.pgn
 ```
+
+During import, progress is printed to the terminal.
+
+If you edit or delete games in `pgn/all.pgn`, rerun the importer so the database matches the source again.
 
 Start the app:
 
