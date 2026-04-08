@@ -49,6 +49,7 @@ def _append_shared_game_filters(
     params: dict[str, object],
     aliases: list[str],
     game_number: int | None = None,
+    move_sequence: tuple[str, ...] = (),
     player: str = "",
     color: str = "Any",
     result: str = "Any",
@@ -58,6 +59,12 @@ def _append_shared_game_filters(
     if game_number is not None:
         clauses.append("game_number = :game_number")
         params["game_number"] = game_number
+
+    if move_sequence:
+        move_text = " ".join(move_sequence)
+        clauses.append("(TRIM(moves_san) = :move_text OR TRIM(moves_san) LIKE :move_prefix)")
+        params["move_text"] = move_text
+        params["move_prefix"] = f"{move_text} %"
 
     if player.strip():
         params["player"] = f"%{player.strip()}%"
@@ -88,6 +95,7 @@ def load_games(
     connection: sqlite3.Connection,
     database_id: int | None = None,
     game_number: int | None = None,
+    move_sequence: tuple[str, ...] = (),
     player: str = "",
     color: str = "Any",
     result: str = "Any",
@@ -109,6 +117,7 @@ def load_games(
         params=params,
         aliases=aliases,
         game_number=game_number,
+        move_sequence=move_sequence,
         player=player,
         color=color,
         result=result,
@@ -186,6 +195,7 @@ def _build_stats_where_clause(
     prefix: str,
     side: str,
     game_number: int | None = None,
+    move_sequence: tuple[str, ...] = (),
     player: str = "",
     color: str = "Any",
     result: str = "Any",
@@ -205,6 +215,7 @@ def _build_stats_where_clause(
         params=params,
         aliases=aliases,
         game_number=game_number,
+        move_sequence=move_sequence,
         player=player,
         color=color,
         result=result,
@@ -248,6 +259,8 @@ def load_player_summary(
     connection: sqlite3.Connection,
     usernames: str,
     game_number: int | None = None,
+    move_sequence: tuple[str, ...] = (),
+    position_label: str = "Start",
     player: str = "",
     color: str = "Any",
     result: str = "Any",
@@ -257,23 +270,23 @@ def load_player_summary(
 
     if color == "Any":
         total_where_sql, total_params = _build_stats_where_clause(
-            usernames, "summary_total", "total", game_number, player, color, result, eco_prefix
+            usernames, "summary_total", "total", game_number, move_sequence, player, color, result, eco_prefix
         )
-        total_row = {"Colour": "Total", "Position": "Start", **_load_result_summary(connection, total_where_sql, total_params)}
+        total_row = {"Colour": "Total", "Position": position_label, **_load_result_summary(connection, total_where_sql, total_params)}
     else:
         total_row = None
 
     if color in {"Any", "White"}:
         white_where_sql, white_params = _build_stats_where_clause(
-            usernames, "summary_white", "white", game_number, player, color, result, eco_prefix
+            usernames, "summary_white", "white", game_number, move_sequence, player, color, result, eco_prefix
         )
-        rows.append({"Colour": "White", "Position": "Start", **_load_result_summary(connection, white_where_sql, white_params)})
+        rows.append({"Colour": "White", "Position": position_label, **_load_result_summary(connection, white_where_sql, white_params)})
 
     if color in {"Any", "Black"}:
         black_where_sql, black_params = _build_stats_where_clause(
-            usernames, "summary_black", "black", game_number, player, color, result, eco_prefix
+            usernames, "summary_black", "black", game_number, move_sequence, player, color, result, eco_prefix
         )
-        rows.append({"Colour": "Black", "Position": "Start", **_load_result_summary(connection, black_where_sql, black_params)})
+        rows.append({"Colour": "Black", "Position": position_label, **_load_result_summary(connection, black_where_sql, black_params)})
 
     if total_row is not None:
         rows.append(total_row)
@@ -281,32 +294,58 @@ def load_player_summary(
     return pd.DataFrame(rows)
 
 
-def load_first_move_summary(
+def load_move_summary(
     connection: sqlite3.Connection,
     usernames: str,
     side: str,
     game_number: int | None = None,
+    move_sequence: tuple[str, ...] = (),
     player: str = "",
     color: str = "Any",
     result: str = "Any",
     eco_prefix: str = "",
 ) -> pd.DataFrame:
     where_sql, params = _build_stats_where_clause(
-        usernames, f"first_move_{side}", side, game_number, player, color, result, eco_prefix
+        usernames, f"move_summary_{side}", side, game_number, move_sequence, player, color, result, eco_prefix
     )
     query = f"""
         SELECT
-            CASE
-                WHEN INSTR(TRIM(moves_san), ' ') > 0 THEN SUBSTR(TRIM(moves_san), 1, INSTR(TRIM(moves_san), ' ') - 1)
-                ELSE TRIM(moves_san)
-            END AS move,
-            COUNT(*) AS games,
-            SUM(CASE WHEN result = '1-0' THEN 1 ELSE 0 END) AS white,
-            SUM(CASE WHEN result = '1/2-1/2' THEN 1 ELSE 0 END) AS draw,
-            SUM(CASE WHEN result = '0-1' THEN 1 ELSE 0 END) AS black
+            moves_san,
+            result
         FROM games
         {where_sql} AND moves_san IS NOT NULL AND TRIM(moves_san) <> ''
-        GROUP BY move
-        ORDER BY games DESC, move ASC
     """
-    return pd.read_sql_query(query, connection, params=params)
+    games_df = pd.read_sql_query(query, connection, params=params)
+    if games_df.empty:
+        return pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
+
+    next_move_index = len(move_sequence)
+    rows: list[dict[str, int | str]] = []
+    for row in games_df.itertuples(index=False):
+        tokens = row.moves_san.strip().split()
+        if len(tokens) <= next_move_index:
+            continue
+
+        rows.append(
+            {
+                "move": tokens[next_move_index],
+                "result": row.result,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
+
+    moves_df = pd.DataFrame(rows)
+    summary_df = (
+        moves_df.groupby("move", as_index=False)
+        .agg(
+            games=("result", "size"),
+            white=("result", lambda series: int((series == "1-0").sum())),
+            draw=("result", lambda series: int((series == "1/2-1/2").sum())),
+            black=("result", lambda series: int((series == "0-1").sum())),
+        )
+        .sort_values(["games", "move"], ascending=[False, True], kind="stable")
+        .reset_index(drop=True)
+    )
+    return summary_df
