@@ -1,14 +1,47 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 
-def render_player_summary(counts: dict[str, int]) -> None:
-    columns = st.columns(4)
-    columns[0].metric("White Games", counts["white_games"])
-    columns[1].metric("Black Games", counts["black_games"])
-    columns[2].metric("Total Games", counts["total_games"])
-    columns[3].metric("W/D/L", f"{counts['wins']}/{counts['draws']}/{counts['losses']}")
+def _format_percent(value: float) -> str:
+    return f"{value:.1f}%"
+
+
+def _render_summary_table(table_df: pd.DataFrame) -> None:
+    st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+
+def _format_results_table(table_df: pd.DataFrame, first_column: str) -> pd.DataFrame:
+    formatted_df = table_df.rename(
+        columns={
+            "games": "Games",
+            "white": "White",
+            "draw": "Draw",
+            "black": "Black",
+        }
+    ).copy()
+
+    games = formatted_df["Games"]
+    formatted_df["Games"] = games.map(lambda value: f"{value:,}")
+    formatted_df["White"] = (formatted_df["White"] / games * 100).fillna(0).map(_format_percent)
+    formatted_df["Draw"] = (formatted_df["Draw"] / games * 100).fillna(0).map(_format_percent)
+    formatted_df["Black"] = (formatted_df["Black"] / games * 100).fillna(0).map(_format_percent)
+
+    column_order = [first_column, "Games", "White", "Draw", "Black"]
+    return formatted_df[column_order]
+
+
+def render_player_summary(summary_df: pd.DataFrame) -> None:
+    _render_summary_table(_format_results_table(summary_df, "Position"))
+
+
+def render_move_summary(moves_df: pd.DataFrame) -> None:
+    if moves_df.empty:
+        _render_summary_table(pd.DataFrame(columns=["Move", "Games", "White", "Draw", "Black"]))
+        return
+
+    _render_summary_table(_format_results_table(moves_df.rename(columns={"move": "Move"}), "Move"))
 
 
 def render_quality_summary(counts: dict[str, int]) -> None:

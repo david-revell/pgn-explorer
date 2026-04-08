@@ -152,54 +152,88 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
     return counts
 
 
-def load_player_summary(connection: sqlite3.Connection, usernames: str) -> dict[str, int]:
+def _build_my_games_where_clause(usernames: str, prefix: str) -> tuple[str, dict[str, object]]:
     aliases = normalize_aliases(usernames)
     if not aliases:
-        return {
-            "white_games": 0,
-            "black_games": 0,
-            "total_games": 0,
-            "wins": 0,
-            "draws": 0,
-            "losses": 0,
-        }
+        return "WHERE 1 = 0", {}
 
     params: dict[str, object] = {}
-    white_match = _build_alias_match_clause("white", aliases, params, "summary_white_alias")
-    black_match = _build_alias_match_clause("black", aliases, params, "summary_black_alias")
+    white_match = _build_alias_match_clause("white", aliases, params, f"{prefix}_white_alias")
+    black_match = _build_alias_match_clause("black", aliases, params, f"{prefix}_black_alias")
     player_match = f"({white_match} OR {black_match})"
+    return f"WHERE {player_match}", params
 
+
+def _build_side_where_clause(usernames: str, prefix: str, side: str) -> tuple[str, dict[str, object]]:
+    aliases = normalize_aliases(usernames)
+    if not aliases:
+        return "WHERE 1 = 0", {}
+
+    params: dict[str, object] = {}
+    white_match = _build_alias_match_clause("white", aliases, params, f"{prefix}_white_alias")
+    black_match = _build_alias_match_clause("black", aliases, params, f"{prefix}_black_alias")
+
+    if side == "white":
+        return f"WHERE {white_match}", params
+    if side == "black":
+        return f"WHERE {black_match}", params
+    return f"WHERE ({white_match} OR {black_match})", params
+
+
+def _load_result_summary(connection: sqlite3.Connection, where_sql: str, params: dict[str, object]) -> dict[str, int]:
     row = connection.execute(
         f"""
         SELECT
-            SUM(CASE WHEN {white_match} THEN 1 ELSE 0 END) AS white_games,
-            SUM(CASE WHEN {black_match} THEN 1 ELSE 0 END) AS black_games,
-            SUM(CASE WHEN {player_match} THEN 1 ELSE 0 END) AS total_games,
-            SUM(
-                CASE
-                    WHEN {white_match} AND result = '1-0' THEN 1
-                    WHEN {black_match} AND result = '0-1' THEN 1
-                    ELSE 0
-                END
-            ) AS wins,
-            SUM(CASE WHEN {player_match} AND result = '1/2-1/2' THEN 1 ELSE 0 END) AS draws,
-            SUM(
-                CASE
-                    WHEN {white_match} AND result = '0-1' THEN 1
-                    WHEN {black_match} AND result = '1-0' THEN 1
-                    ELSE 0
-                END
-            ) AS losses
+            COUNT(*) AS games,
+            SUM(CASE WHEN result = '1-0' THEN 1 ELSE 0 END) AS white,
+            SUM(CASE WHEN result = '1/2-1/2' THEN 1 ELSE 0 END) AS draw,
+            SUM(CASE WHEN result = '0-1' THEN 1 ELSE 0 END) AS black
         FROM games
+        {where_sql}
         """,
         params,
     ).fetchone()
 
     return {
-        "white_games": row["white_games"] or 0,
-        "black_games": row["black_games"] or 0,
-        "total_games": row["total_games"] or 0,
-        "wins": row["wins"] or 0,
-        "draws": row["draws"] or 0,
-        "losses": row["losses"] or 0,
+        "games": row["games"] or 0,
+        "white": row["white"] or 0,
+        "draw": row["draw"] or 0,
+        "black": row["black"] or 0,
     }
+
+
+def load_player_summary(connection: sqlite3.Connection, usernames: str) -> pd.DataFrame:
+    total_where_sql, total_params = _build_side_where_clause(usernames, "summary_total", "total")
+    white_where_sql, white_params = _build_side_where_clause(usernames, "summary_white", "white")
+    black_where_sql, black_params = _build_side_where_clause(usernames, "summary_black", "black")
+
+    total = _load_result_summary(connection, total_where_sql, total_params)
+    as_white = _load_result_summary(connection, white_where_sql, white_params)
+    as_black = _load_result_summary(connection, black_where_sql, black_params)
+
+    return pd.DataFrame(
+        [
+            {"Position": "Total", **total},
+            {"Position": "As White", **as_white},
+            {"Position": "As Black", **as_black},
+        ]
+    )
+
+def load_first_move_summary(connection: sqlite3.Connection, usernames: str, side: str) -> pd.DataFrame:
+    where_sql, params = _build_side_where_clause(usernames, f"first_move_{side}", side)
+    query = f"""
+        SELECT
+            CASE
+                WHEN INSTR(TRIM(moves_san), ' ') > 0 THEN SUBSTR(TRIM(moves_san), 1, INSTR(TRIM(moves_san), ' ') - 1)
+                ELSE TRIM(moves_san)
+            END AS move,
+            COUNT(*) AS games,
+            SUM(CASE WHEN result = '1-0' THEN 1 ELSE 0 END) AS white,
+            SUM(CASE WHEN result = '1/2-1/2' THEN 1 ELSE 0 END) AS draw,
+            SUM(CASE WHEN result = '0-1' THEN 1 ELSE 0 END) AS black
+        FROM games
+        {where_sql} AND moves_san IS NOT NULL AND TRIM(moves_san) <> ''
+        GROUP BY move
+        ORDER BY games DESC, move ASC
+    """
+    return pd.read_sql_query(query, connection, params=params)
