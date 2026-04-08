@@ -3,6 +3,14 @@ from __future__ import annotations
 import streamlit as st
 
 
+def render_player_summary(counts: dict[str, int]) -> None:
+    columns = st.columns(4)
+    columns[0].metric("White Games", counts["white_games"])
+    columns[1].metric("Black Games", counts["black_games"])
+    columns[2].metric("Total Games", counts["total_games"])
+    columns[3].metric("W/D/L", f"{counts['wins']}/{counts['draws']}/{counts['losses']}")
+
+
 def render_quality_summary(counts: dict[str, int]) -> None:
     columns = st.columns(3)
     for column, (label, value) in zip(columns, counts.items()):

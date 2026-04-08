@@ -10,6 +10,25 @@ def normalize_aliases(raw_aliases: str) -> list[str]:
     return [alias for alias in aliases if alias]
 
 
+def _build_alias_match_clause(
+    field_name: str,
+    aliases: list[str],
+    params: dict[str, object],
+    prefix: str,
+) -> str:
+    if not aliases:
+        return "0"
+
+    placeholders: list[str] = []
+    for index, alias in enumerate(aliases):
+        key = f"{prefix}_{index}"
+        params[key] = alias
+        placeholders.append(f":{key}")
+
+    alias_sql = ", ".join(placeholders)
+    return f"LOWER(TRIM(COALESCE({field_name}, ''))) IN ({alias_sql})"
+
+
 def _append_not_my_game_clause(
     clauses: list[str],
     params: dict[str, object],
@@ -18,16 +37,10 @@ def _append_not_my_game_clause(
     if not aliases:
         return
 
-    placeholders: list[str] = []
-    for index, alias in enumerate(aliases):
-        key = f"alias_{index}"
-        params[key] = alias
-        placeholders.append(f":{key}")
-
-    alias_sql = ", ".join(placeholders)
+    white_match = _build_alias_match_clause("white", aliases, params, "not_my_white_alias")
+    black_match = _build_alias_match_clause("black", aliases, params, "not_my_black_alias")
     clauses.append(
-        f"(LOWER(TRIM(COALESCE(white, ''))) NOT IN ({alias_sql}) "
-        f"AND LOWER(TRIM(COALESCE(black, ''))) NOT IN ({alias_sql}))"
+        f"NOT ({white_match} OR {black_match})"
     )
 
 
@@ -137,3 +150,56 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
         ).fetchone()[0],
     }
     return counts
+
+
+def load_player_summary(connection: sqlite3.Connection, usernames: str) -> dict[str, int]:
+    aliases = normalize_aliases(usernames)
+    if not aliases:
+        return {
+            "white_games": 0,
+            "black_games": 0,
+            "total_games": 0,
+            "wins": 0,
+            "draws": 0,
+            "losses": 0,
+        }
+
+    params: dict[str, object] = {}
+    white_match = _build_alias_match_clause("white", aliases, params, "summary_white_alias")
+    black_match = _build_alias_match_clause("black", aliases, params, "summary_black_alias")
+    player_match = f"({white_match} OR {black_match})"
+
+    row = connection.execute(
+        f"""
+        SELECT
+            SUM(CASE WHEN {white_match} THEN 1 ELSE 0 END) AS white_games,
+            SUM(CASE WHEN {black_match} THEN 1 ELSE 0 END) AS black_games,
+            SUM(CASE WHEN {player_match} THEN 1 ELSE 0 END) AS total_games,
+            SUM(
+                CASE
+                    WHEN {white_match} AND result = '1-0' THEN 1
+                    WHEN {black_match} AND result = '0-1' THEN 1
+                    ELSE 0
+                END
+            ) AS wins,
+            SUM(CASE WHEN {player_match} AND result = '1/2-1/2' THEN 1 ELSE 0 END) AS draws,
+            SUM(
+                CASE
+                    WHEN {white_match} AND result = '0-1' THEN 1
+                    WHEN {black_match} AND result = '1-0' THEN 1
+                    ELSE 0
+                END
+            ) AS losses
+        FROM games
+        """,
+        params,
+    ).fetchone()
+
+    return {
+        "white_games": row["white_games"] or 0,
+        "black_games": row["black_games"] or 0,
+        "total_games": row["total_games"] or 0,
+        "wins": row["wins"] or 0,
+        "draws": row["draws"] or 0,
+        "losses": row["losses"] or 0,
+    }
