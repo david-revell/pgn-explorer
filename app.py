@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from src.aliases import load_alias_table, resolve_player_aliases
 from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
 from src.queries import (
     load_data_review_counts,
@@ -42,10 +43,15 @@ def render_opening_explorer(connection) -> None:
     position_label = format_position_label(move_sequence)
     critical_counts = load_quality_counts(connection, PLAYER_USERNAMES)
     active_critical = {label: value for label, value in critical_counts.items() if value > 0}
+    resolved_player_aliases = resolve_player_aliases(player)
 
     if active_critical:
         warning_text = ", ".join(f"{label}: {value:,}" for label, value in active_critical.items())
         st.warning(f"Critical issues need review: {warning_text}")
+
+    if resolved_player_aliases["expanded"]:
+        alias_text = ", ".join(resolved_player_aliases["display_aliases"])
+        st.info(f"Player aliases: {resolved_player_aliases['canonical_name']} -> {alias_text}")
 
     st.markdown(f"**Current position:** {position_label}")
     if move_sequence:
@@ -168,6 +174,11 @@ def render_data_review(connection) -> None:
     if review_df.empty:
         st.info(f"No games are currently in the `{review_type}` queue.")
     render_game_list_and_detail(connection, review_df)
+
+    alias_df = load_alias_table()
+    if not alias_df.empty:
+        st.subheader("Aliases")
+        st.dataframe(alias_df, use_container_width=True, hide_index=True)
 
 
 def main() -> None:

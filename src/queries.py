@@ -4,6 +4,8 @@ import sqlite3
 
 import pandas as pd
 
+from src.aliases import resolve_player_aliases
+
 
 def normalize_aliases(raw_aliases: str) -> list[str]:
     aliases = [alias.strip().lower() for alias in raw_aliases.split(",")]
@@ -44,6 +46,31 @@ def _append_not_my_game_clause(
     )
 
 
+def _append_player_clause(
+    clauses: list[str],
+    params: dict[str, object],
+    player: str,
+) -> None:
+    resolved = resolve_player_aliases(player)
+    if resolved["expanded"]:
+        search_names = resolved["search_names"]
+        placeholders: list[str] = []
+        for index, search_name in enumerate(search_names):
+            key = f"player_alias_{index}"
+            params[key] = search_name
+            placeholders.append(f":{key}")
+
+        alias_sql = ", ".join(placeholders)
+        clauses.append(
+            f"(LOWER(TRIM(COALESCE(white, ''))) IN ({alias_sql}) "
+            f"OR LOWER(TRIM(COALESCE(black, ''))) IN ({alias_sql}))"
+        )
+        return
+
+    params["player"] = f"%{player.strip()}%"
+    clauses.append("(white LIKE :player OR black LIKE :player)")
+
+
 def _append_shared_game_filters(
     clauses: list[str],
     params: dict[str, object],
@@ -67,8 +94,7 @@ def _append_shared_game_filters(
         params["move_prefix"] = f"{move_text} %"
 
     if player.strip():
-        params["player"] = f"%{player.strip()}%"
-        clauses.append("(white LIKE :player OR black LIKE :player)")
+        _append_player_clause(clauses, params, player)
 
     if result != "Any":
         clauses.append("result = :result")
