@@ -12,6 +12,7 @@ from src.queries import (
     load_game_by_id,
     load_games,
     load_move_summary,
+    load_pgn_export,
     load_player_summary,
     load_quality_counts,
 )
@@ -107,6 +108,20 @@ def render_opening_explorer(connection) -> None:
 
 
 def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
+    export_columns = st.columns([1, 1, 6])
+    export_columns[0].download_button(
+        "Export CSV",
+        data=games_df.drop(columns=["id"]).to_csv(index=False),
+        file_name="games_export.csv",
+        mime="text/csv",
+    )
+    export_columns[1].download_button(
+        "Export PGN",
+        data=load_pgn_export(connection, games_df["id"].tolist()),
+        file_name="games_export.pgn",
+        mime="application/x-chess-pgn",
+    )
+
     st.dataframe(games_df.drop(columns=["id"]), use_container_width=True, hide_index=True)
 
     if games_df.empty:

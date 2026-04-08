@@ -171,6 +171,25 @@ def load_game_by_id(connection: sqlite3.Connection, game_id: int) -> sqlite3.Row
     return cursor.fetchone()
 
 
+def load_pgn_export(connection: sqlite3.Connection, game_ids: list[int]) -> str:
+    if not game_ids:
+        return ""
+
+    placeholders = ", ".join("?" for _ in game_ids)
+    rows = connection.execute(
+        f"""
+        SELECT id, pgn_text
+        FROM games
+        WHERE id IN ({placeholders})
+        """,
+        game_ids,
+    ).fetchall()
+
+    pgn_by_id = {int(row["id"]): row["pgn_text"] for row in rows}
+    ordered_pgns = [pgn_by_id[game_id].strip() for game_id in game_ids if game_id in pgn_by_id]
+    return "\n\n".join(ordered_pgns) + ("\n" if ordered_pgns else "")
+
+
 def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[str, int]:
     aliases = normalize_aliases(usernames)
     params: dict[str, object] = {}
