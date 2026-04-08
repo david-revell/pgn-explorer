@@ -177,6 +177,25 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
             )
 
 
+def _render_game_detail_only(connection, games_df: pd.DataFrame) -> None:
+    if games_df.empty:
+        st.info("No games matched the current filters.")
+        return
+
+    options = {
+        (
+            f"game {row.game_number} | line {row.source_line} | "
+            f"{row.date} | {row.white} vs {row.black} | {row.result}"
+        ): int(row.id)
+        for row in games_df.itertuples(index=False)
+    }
+    selected_label = st.selectbox("Select a game", list(options.keys()))
+    selected_game = load_game_by_id(connection, options[selected_label])
+
+    if selected_game is not None:
+        render_game_summary(dict(selected_game))
+
+
 def render_opening_explorer(connection) -> None:
     with st.sidebar:
         st.header("Filters")
@@ -324,7 +343,9 @@ def render_data_review(connection) -> None:
         st.info(f"No games are currently in the `{review_type}` queue.")
     elif review_type == "Missing ECO":
         _render_missing_eco_editor(review_df)
-    render_game_list_and_detail(connection, review_df)
+        _render_game_detail_only(connection, review_df)
+    else:
+        render_game_list_and_detail(connection, review_df)
 
     alias_df = load_alias_table()
     if not alias_df.empty:
