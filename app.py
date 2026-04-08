@@ -69,14 +69,12 @@ def main() -> None:
 
         with st.sidebar:
             st.header("Filters")
-            with st.form("games_filters"):
-                game_number_text = st.text_input("Game Number")
-                player = st.text_input("Player")
-                color = st.selectbox("Colour", ["Any", "White", "Black"])
-                result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
-                eco_prefix = st.text_input("ECO starts with")
-                limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
-                st.form_submit_button("Load games")
+            game_number_text = st.text_input("Game Number")
+            player = st.text_input("Player")
+            color = st.selectbox("Colour", ["Any", "White", "Black"])
+            result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
+            eco_prefix = st.text_input("ECO starts with")
+            limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
 
         game_number = int(game_number_text) if game_number_text.strip().isdigit() else None
         move_sequence = tuple(st.session_state["move_sequence"])
@@ -109,7 +107,7 @@ def main() -> None:
                 eco_prefix=eco_prefix,
             )
         )
-        st.markdown("**Move breakdown**")
+        st.markdown("<div style='margin-top: 1.15rem; margin-bottom: 0.35rem; font-weight: 700;'>Move breakdown</div>", unsafe_allow_html=True)
         move_side = "total" if color == "Any" else color.lower()
         selected_move = render_clickable_move_summary(
             load_move_summary(
@@ -143,7 +141,7 @@ def main() -> None:
         )
 
         st.subheader("Games")
-        st.dataframe(games_df, use_container_width=True, hide_index=True)
+        st.dataframe(games_df.drop(columns=["id"]), use_container_width=True, hide_index=True)
 
         if games_df.empty:
             st.info("No games matched the current filters.")

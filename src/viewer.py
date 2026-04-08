@@ -29,8 +29,94 @@ def format_position_label(move_sequence: tuple[str, ...]) -> str:
     return " ".join(parts)
 
 
-def _render_summary_table(table_df: pd.DataFrame) -> None:
-    st.dataframe(table_df, use_container_width=True, hide_index=True)
+def _inject_breakdown_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .breakdown-header {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #38463a;
+            margin-bottom: 0.2rem;
+        }
+        .breakdown-header--right {
+            text-align: right;
+        }
+        .breakdown-text {
+            font-size: 0.98rem;
+            padding-top: 0.18rem;
+            white-space: nowrap;
+        }
+        .breakdown-games {
+            font-size: 0.98rem;
+            padding-top: 0.18rem;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .result-bar {
+            position: relative;
+            display: flex;
+            height: 1.6rem;
+            border-radius: 0.8rem;
+            overflow: hidden;
+            background: #e6e6e6;
+            border: 1px solid #c9c9c9;
+        }
+        .result-bar__white {
+            background: linear-gradient(180deg, #f7f7f7 0%, #ececec 100%);
+            color: #505050;
+        }
+        .result-bar__draw {
+            background: linear-gradient(180deg, #d3d3d3 0%, #bdbdbd 100%);
+        }
+        .result-bar__black {
+            background: linear-gradient(180deg, #7b7b7b 0%, #4f4f4f 100%);
+            color: #ffffff;
+        }
+        .result-bar__segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            line-height: 1;
+            min-width: 0;
+        }
+        .result-bar__label {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .breakdown-row {
+            margin-bottom: 0.32rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_result_bar(white: int, draw: int, black: int) -> str:
+    games = white + draw + black
+    white_pct = (white / games * 100) if games else 0
+    draw_pct = (draw / games * 100) if games else 0
+    black_pct = (black / games * 100) if games else 0
+
+    white_label = _format_percent(white_pct) if white_pct >= 12 else ""
+    draw_label = _format_percent(draw_pct) if draw_pct >= 12 else ""
+    black_label = _format_percent(black_pct) if black_pct >= 12 else ""
+
+    return (
+        "<div class='result-bar'>"
+        f"<div class='result-bar__segment result-bar__white' style='width:{white_pct:.3f}%'>"
+        f"<span class='result-bar__label'>{white_label}</span>"
+        "</div>"
+        f"<div class='result-bar__segment result-bar__draw' style='width:{draw_pct:.3f}%'>"
+        f"<span class='result-bar__label'>{draw_label}</span>"
+        "</div>"
+        f"<div class='result-bar__segment result-bar__black' style='width:{black_pct:.3f}%'>"
+        f"<span class='result-bar__label'>{black_label}</span>"
+        "</div>"
+        "</div>"
+    )
 
 
 def render_quality_summary(counts: dict[str, int]) -> None:
@@ -72,18 +158,39 @@ def _format_results_table(table_df: pd.DataFrame, first_column: str) -> pd.DataF
 
 
 def render_player_summary(summary_df: pd.DataFrame) -> None:
-    formatted_df = _format_results_table(summary_df, "Colour")
-    column_order = ["Colour", "Games", "White", "Draw", "Black"]
-    _render_summary_table(formatted_df[column_order])
+    _inject_breakdown_styles()
+    headers = st.columns([0.8, 0.9, 5.3])
+    headers[0].markdown("<div class='breakdown-header'>Colour</div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header'>White / Draw / Black</div>", unsafe_allow_html=True)
+
+    for row in summary_df.itertuples(index=False):
+        columns = st.columns([0.8, 0.9, 5.3])
+        columns[0].markdown(f"<div class='breakdown-text'>{row.Colour}</div>", unsafe_allow_html=True)
+        columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
+        columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
 
 
 def render_move_summary(moves_df: pd.DataFrame) -> None:
     if moves_df.empty:
-        _render_summary_table(pd.DataFrame(columns=["Move", "Games", "White", "Draw", "Black"]))
+        _inject_breakdown_styles()
+        headers = st.columns([0.9, 0.9, 5.2])
+        headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
+        headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+        headers[2].markdown("<div class='breakdown-header'>White / Draw / Black</div>", unsafe_allow_html=True)
         return
 
-    move_df = moves_df.rename(columns={"move": "Move"}).copy()
-    _render_summary_table(_format_results_table(move_df, "Move"))
+    _inject_breakdown_styles()
+    headers = st.columns([0.9, 0.9, 5.2])
+    headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header'>White / Draw / Black</div>", unsafe_allow_html=True)
+
+    for row in moves_df.itertuples(index=False):
+        columns = st.columns([0.9, 0.9, 5.2])
+        columns[0].markdown(f"<div class='breakdown-text'>{row.move}</div>", unsafe_allow_html=True)
+        columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
+        columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
 
 
 def render_clickable_move_summary(
@@ -95,25 +202,20 @@ def render_clickable_move_summary(
         render_move_summary(moves_df)
         return None
 
-    headers = st.columns([2, 1, 1, 1, 1])
-    for column, label in zip(headers, ["Move", "Games", "White", "Draw", "Black"]):
-        column.markdown(f"**{label}**")
+    _inject_breakdown_styles()
+    headers = st.columns([0.9, 0.9, 5.2])
+    headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header'>White / Draw / Black</div>", unsafe_allow_html=True)
 
     for row in moves_df.itertuples(index=False):
-        columns = st.columns([2, 1, 1, 1, 1])
+        columns = st.columns([0.9, 0.9, 5.2])
         move_label = format_move_label(row.move, ply_index)
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
 
-        games = int(row.games)
-        white_pct = _format_percent((row.white / games * 100) if games else 0)
-        draw_pct = _format_percent((row.draw / games * 100) if games else 0)
-        black_pct = _format_percent((row.black / games * 100) if games else 0)
-
-        columns[1].markdown(f"{games:,}")
-        columns[2].markdown(white_pct)
-        columns[3].markdown(draw_pct)
-        columns[4].markdown(black_pct)
+        columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
+        columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
 
     return None
 

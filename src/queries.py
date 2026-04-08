@@ -68,12 +68,7 @@ def _append_shared_game_filters(
 
     if player.strip():
         params["player"] = f"%{player.strip()}%"
-        if color == "White":
-            clauses.append("white LIKE :player")
-        elif color == "Black":
-            clauses.append("black LIKE :player")
-        else:
-            clauses.append("(white LIKE :player OR black LIKE :player)")
+        clauses.append("(white LIKE :player OR black LIKE :player)")
 
     if result != "Any":
         clauses.append("result = :result")
@@ -125,9 +120,9 @@ def load_games(
         quality_filter=quality_filter,
     )
 
-    if not player.strip() and color == "White" and aliases:
+    if color == "White" and aliases:
         clauses.append(_build_alias_match_clause("white", aliases, params, "games_white_alias"))
-    elif not player.strip() and color == "Black" and aliases:
+    elif color == "Black" and aliases:
         clauses.append(_build_alias_match_clause("black", aliases, params, "games_black_alias"))
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
