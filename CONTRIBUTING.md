@@ -25,5 +25,5 @@ This project is a local PGN explorer for reviewing, searching, and cleaning a pe
 ## UI Notes
 
 - Keep the home page focused on practical archive statistics and filtering.
-- Current player-specific summaries are from `peletis`'s perspective unless explicitly changed.
+- Current player-specific filtering is built around `peletis` unless explicitly changed.
 - Prefer simple, readable summaries over dense dashboards.

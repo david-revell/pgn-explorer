@@ -60,17 +60,13 @@ The most reliable source reference is `source_line`, because it points directly 
 
 ## Data quality checks
 
-The opening explorer shows headline `Data Quality` counts for these checks:
+The `Data review` page includes a `Critical issues` section with these checks:
 
 - `Missing result`: games with no result or `*`
 - `Missing moves`: games where no move text was imported
 - `Not my game`: games where neither White nor Black matches one of your usernames
 
-`My usernames` accepts a comma-separated list and matches case-insensitively. For example:
-
-```text
-peletis, Peletis, old_handle
-```
+The current app treats `peletis` as the internal player identity for player-specific filtering and summaries.
 
 The sidebar uses British English in user-facing labels, for example `Colour`.
 
@@ -100,7 +96,7 @@ Fully missing dates sort last.
 ## Typical cleanup loop
 
 1. Run `streamlit run app.py`
-2. Choose a `Data quality` filter
+2. Open `Data review`
 3. Find the bad game and note its `source_line`
 4. Edit or delete that game in `pgn/all.pgn`
 5. Rerun `python import_pgn.py --pgn pgn/all.pgn`
