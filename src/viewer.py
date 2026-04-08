@@ -12,6 +12,18 @@ def _render_summary_table(table_df: pd.DataFrame) -> None:
     st.dataframe(table_df, use_container_width=True, hide_index=True)
 
 
+def render_quality_summary(counts: dict[str, int]) -> None:
+    columns = st.columns(3)
+    for column, (label, value) in zip(columns, counts.items()):
+        colour = "#2e7d32" if value == 0 else "#c62828"
+        status = "OK" if value == 0 else "Needs review"
+        column.markdown(
+            f"**{label}: <span style='color:{colour}'>{value:,}</span>**",
+            unsafe_allow_html=True,
+        )
+        column.caption(status)
+
+
 def _format_results_table(table_df: pd.DataFrame, first_column: str) -> pd.DataFrame:
     formatted_df = table_df.rename(
         columns={
@@ -42,12 +54,6 @@ def render_move_summary(moves_df: pd.DataFrame) -> None:
         return
 
     _render_summary_table(_format_results_table(moves_df.rename(columns={"move": "Move"}), "Move"))
-
-
-def render_quality_summary(counts: dict[str, int]) -> None:
-    columns = st.columns(3)
-    for column, (label, value) in zip(columns, counts.items()):
-        column.metric(label, value)
 
 
 def render_game_summary(game: dict) -> None:

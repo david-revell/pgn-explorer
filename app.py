@@ -8,6 +8,8 @@ from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection
 from src.queries import load_first_move_summary, load_game_by_id, load_games, load_player_summary, load_quality_counts
 from src.viewer import render_game_summary, render_move_summary, render_player_summary, render_quality_summary
 
+PLAYER_USERNAMES = "peletis"
+
 
 def main() -> None:
     st.set_page_config(page_title="pgn-explorer", layout="wide")
@@ -32,29 +34,46 @@ def main() -> None:
 
         with st.sidebar:
             st.header("Filters")
-            usernames = st.text_input("My usernames", value="peletis")
-            quality_filter = st.selectbox(
-                "Data quality",
-                ["All games", "Missing result", "Missing moves", "Not my game"],
-            )
-            game_number_text = st.text_input("Game Number")
-            player = st.text_input("Player")
-            color = st.selectbox("Colour", ["Either", "White", "Black"])
-            result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
-            eco_prefix = st.text_input("ECO starts with")
-            limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
+            with st.form("games_filters"):
+                game_number_text = st.text_input("Game Number")
+                player = st.text_input("Player")
+                color = st.selectbox("Colour", ["Any", "White", "Black"])
+                result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
+                eco_prefix = st.text_input("ECO starts with")
+                limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
+                st.form_submit_button("Load games")
 
         game_number = int(game_number_text) if game_number_text.strip().isdigit() else None
 
-        st.subheader("My Games")
-        render_player_summary(load_player_summary(connection, usernames))
-        st.markdown("**Next moves as White**")
-        render_move_summary(load_first_move_summary(connection, usernames, "white"))
-        st.markdown("**Next moves as Black**")
-        render_move_summary(load_first_move_summary(connection, usernames, "black"))
-
         st.subheader("Data Quality")
-        render_quality_summary(load_quality_counts(connection, usernames))
+        render_quality_summary(load_quality_counts(connection, PLAYER_USERNAMES))
+
+        st.subheader("My Games")
+        render_player_summary(
+            load_player_summary(
+                connection=connection,
+                usernames=PLAYER_USERNAMES,
+                game_number=game_number,
+                player=player,
+                color=color,
+                result=result,
+                eco_prefix=eco_prefix,
+            )
+        )
+        st.markdown("**Move breakdown**")
+        move_side = "total" if color == "Any" else color.lower()
+        render_move_summary(
+            load_first_move_summary(
+                connection=connection,
+                usernames=PLAYER_USERNAMES,
+                side=move_side,
+                game_number=game_number,
+                player=player,
+                color=color,
+                result=result,
+                eco_prefix=eco_prefix,
+            )
+        )
 
         games_df = load_games(
             connection=connection,
@@ -63,8 +82,7 @@ def main() -> None:
             color=color,
             result=result,
             eco_prefix=eco_prefix,
-            quality_filter=quality_filter,
-            usernames=usernames,
+            usernames=PLAYER_USERNAMES,
             limit=limit,
         )
 

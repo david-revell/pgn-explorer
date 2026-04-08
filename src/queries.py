@@ -44,26 +44,17 @@ def _append_not_my_game_clause(
     )
 
 
-def load_games(
-    connection: sqlite3.Connection,
-    database_id: int | None = None,
+def _append_shared_game_filters(
+    clauses: list[str],
+    params: dict[str, object],
+    aliases: list[str],
     game_number: int | None = None,
     player: str = "",
-    color: str = "Either",
+    color: str = "Any",
     result: str = "Any",
     eco_prefix: str = "",
     quality_filter: str = "All games",
-    usernames: str = "peletis",
-    limit: int = 200,
-) -> pd.DataFrame:
-    clauses: list[str] = []
-    params: dict[str, object] = {"limit": limit}
-    aliases = normalize_aliases(usernames)
-
-    if database_id is not None:
-        clauses.append("id = :database_id")
-        params["database_id"] = database_id
-
+) -> None:
     if game_number is not None:
         clauses.append("game_number = :game_number")
         params["game_number"] = game_number
@@ -91,6 +82,44 @@ def load_games(
         clauses.append("(moves_san IS NULL OR TRIM(moves_san) = '')")
     elif quality_filter == "Not my game":
         _append_not_my_game_clause(clauses, params, aliases)
+
+
+def load_games(
+    connection: sqlite3.Connection,
+    database_id: int | None = None,
+    game_number: int | None = None,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+    quality_filter: str = "All games",
+    usernames: str = "peletis",
+    limit: int = 200,
+) -> pd.DataFrame:
+    clauses: list[str] = []
+    params: dict[str, object] = {"limit": limit}
+    aliases = normalize_aliases(usernames)
+
+    if database_id is not None:
+        clauses.append("id = :database_id")
+        params["database_id"] = database_id
+
+    _append_shared_game_filters(
+        clauses=clauses,
+        params=params,
+        aliases=aliases,
+        game_number=game_number,
+        player=player,
+        color=color,
+        result=result,
+        eco_prefix=eco_prefix,
+        quality_filter=quality_filter,
+    )
+
+    if not player.strip() and color == "White" and aliases:
+        clauses.append(_build_alias_match_clause("white", aliases, params, "games_white_alias"))
+    elif not player.strip() and color == "Black" and aliases:
+        clauses.append(_build_alias_match_clause("black", aliases, params, "games_black_alias"))
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -152,32 +181,45 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
     return counts
 
 
-def _build_my_games_where_clause(usernames: str, prefix: str) -> tuple[str, dict[str, object]]:
+def _build_stats_where_clause(
+    usernames: str,
+    prefix: str,
+    side: str,
+    game_number: int | None = None,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+) -> tuple[str, dict[str, object]]:
     aliases = normalize_aliases(usernames)
     if not aliases:
         return "WHERE 1 = 0", {}
 
     params: dict[str, object] = {}
+    clauses: list[str] = []
     white_match = _build_alias_match_clause("white", aliases, params, f"{prefix}_white_alias")
     black_match = _build_alias_match_clause("black", aliases, params, f"{prefix}_black_alias")
-    player_match = f"({white_match} OR {black_match})"
-    return f"WHERE {player_match}", params
 
-
-def _build_side_where_clause(usernames: str, prefix: str, side: str) -> tuple[str, dict[str, object]]:
-    aliases = normalize_aliases(usernames)
-    if not aliases:
-        return "WHERE 1 = 0", {}
-
-    params: dict[str, object] = {}
-    white_match = _build_alias_match_clause("white", aliases, params, f"{prefix}_white_alias")
-    black_match = _build_alias_match_clause("black", aliases, params, f"{prefix}_black_alias")
+    _append_shared_game_filters(
+        clauses=clauses,
+        params=params,
+        aliases=aliases,
+        game_number=game_number,
+        player=player,
+        color=color,
+        result=result,
+        eco_prefix=eco_prefix,
+    )
 
     if side == "white":
-        return f"WHERE {white_match}", params
-    if side == "black":
-        return f"WHERE {black_match}", params
-    return f"WHERE ({white_match} OR {black_match})", params
+        clauses.append(white_match)
+    elif side == "black":
+        clauses.append(black_match)
+    else:
+        clauses.append(f"({white_match} OR {black_match})")
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where_sql, params
 
 
 def _load_result_summary(connection: sqlite3.Connection, where_sql: str, params: dict[str, object]) -> dict[str, int]:
@@ -202,25 +244,51 @@ def _load_result_summary(connection: sqlite3.Connection, where_sql: str, params:
     }
 
 
-def load_player_summary(connection: sqlite3.Connection, usernames: str) -> pd.DataFrame:
-    total_where_sql, total_params = _build_side_where_clause(usernames, "summary_total", "total")
-    white_where_sql, white_params = _build_side_where_clause(usernames, "summary_white", "white")
-    black_where_sql, black_params = _build_side_where_clause(usernames, "summary_black", "black")
+def load_player_summary(
+    connection: sqlite3.Connection,
+    usernames: str,
+    game_number: int | None = None,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+) -> pd.DataFrame:
+    rows: list[dict[str, int | str]] = []
 
-    total = _load_result_summary(connection, total_where_sql, total_params)
-    as_white = _load_result_summary(connection, white_where_sql, white_params)
-    as_black = _load_result_summary(connection, black_where_sql, black_params)
+    if color == "Any":
+        total_where_sql, total_params = _build_stats_where_clause(
+            usernames, "summary_total", "total", game_number, player, color, result, eco_prefix
+        )
+        rows.append({"Position": "Total", **_load_result_summary(connection, total_where_sql, total_params)})
 
-    return pd.DataFrame(
-        [
-            {"Position": "Total", **total},
-            {"Position": "As White", **as_white},
-            {"Position": "As Black", **as_black},
-        ]
+    if color in {"Any", "White"}:
+        white_where_sql, white_params = _build_stats_where_clause(
+            usernames, "summary_white", "white", game_number, player, color, result, eco_prefix
+        )
+        rows.append({"Position": "As White", **_load_result_summary(connection, white_where_sql, white_params)})
+
+    if color in {"Any", "Black"}:
+        black_where_sql, black_params = _build_stats_where_clause(
+            usernames, "summary_black", "black", game_number, player, color, result, eco_prefix
+        )
+        rows.append({"Position": "As Black", **_load_result_summary(connection, black_where_sql, black_params)})
+
+    return pd.DataFrame(rows)
+
+
+def load_first_move_summary(
+    connection: sqlite3.Connection,
+    usernames: str,
+    side: str,
+    game_number: int | None = None,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+) -> pd.DataFrame:
+    where_sql, params = _build_stats_where_clause(
+        usernames, f"first_move_{side}", side, game_number, player, color, result, eco_prefix
     )
-
-def load_first_move_summary(connection: sqlite3.Connection, usernames: str, side: str) -> pd.DataFrame:
-    where_sql, params = _build_side_where_clause(usernames, f"first_move_{side}", side)
     query = f"""
         SELECT
             CASE
