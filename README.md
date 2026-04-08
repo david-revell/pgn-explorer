@@ -42,6 +42,11 @@ Start the app:
 streamlit run app.py
 ```
 
+The app currently has two pages:
+
+- `Opening explorer`: explore openings, filter games, and drill into positions move by move
+- `Data review`: review games with targeted cleanup queues
+
 ## Cleanup workflow
 
 The app is designed around source-first cleanup. If a game is bad, fix or delete it in `pgn/all.pgn`, then rerun the importer.
@@ -55,7 +60,7 @@ The most reliable source reference is `source_line`, because it points directly 
 
 ## Data quality checks
 
-The sidebar includes a `Data quality` filter with these checks:
+The opening explorer shows headline `Data Quality` counts for these checks:
 
 - `Missing result`: games with no result or `*`
 - `Missing moves`: games where no move text was imported
@@ -68,6 +73,29 @@ peletis, Peletis, old_handle
 ```
 
 The sidebar uses British English in user-facing labels, for example `Colour`.
+
+## Data Review
+
+The `Data review` page currently has these queues:
+
+- `Missing date`: blank dates or `????.??.??`
+- `Missing ECO`: games with no ECO code
+
+This page is intended as a review queue rather than an automatic cleanup step.
+
+## Recent Games Ordering
+
+The `Recent games` section on the opening explorer page is ordered by:
+
+1. Date, newest first
+2. `game_number`, descending
+
+Partial dates are sorted by their earliest possible concrete date, with less precise dates first when the lower bound is the same. For example:
+
+- `2008.??.??` comes before `2008.01.01`
+- `2006.04.??` comes before `2006.04.01`
+
+Fully missing dates sort last.
 
 ## Typical cleanup loop
 

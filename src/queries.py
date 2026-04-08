@@ -133,7 +133,27 @@ def load_games(
             white_elo, black_elo, event, site
         FROM games
         {where_sql}
-        ORDER BY game_number DESC
+        ORDER BY
+            CASE
+                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 1
+                ELSE 0
+            END ASC,
+            CASE
+                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 0
+                ELSE CAST(
+                    SUBSTR(date, 1, 4) ||
+                    CASE WHEN SUBSTR(date, 6, 2) = '??' THEN '01' ELSE SUBSTR(date, 6, 2) END ||
+                    CASE WHEN SUBSTR(date, 9, 2) = '??' THEN '01' ELSE SUBSTR(date, 9, 2) END
+                    AS INTEGER
+                )
+            END DESC,
+            CASE
+                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 99
+                WHEN SUBSTR(date, 6, 2) = '??' THEN 1
+                WHEN SUBSTR(date, 9, 2) = '??' THEN 2
+                ELSE 3
+            END ASC,
+            game_number DESC
         LIMIT :limit
     """
     return pd.read_sql_query(query, connection, params=params)
@@ -183,6 +203,56 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
         ).fetchone()[0],
     }
     return counts
+
+
+def load_data_review_counts(connection: sqlite3.Connection) -> dict[str, int]:
+    return {
+        "Missing date": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM games
+            WHERE date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??'
+            """
+        ).fetchone()[0],
+        "Missing ECO": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM games
+            WHERE eco IS NULL OR TRIM(eco) = ''
+            """
+        ).fetchone()[0],
+    }
+
+
+def load_data_review_games(
+    connection: sqlite3.Connection,
+    review_type: str,
+    limit: int = 200,
+) -> pd.DataFrame:
+    if review_type == "Missing date":
+        where_sql = "date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??'"
+        reason_sql = "'Missing date'"
+    else:
+        where_sql = "eco IS NULL OR TRIM(eco) = ''"
+        reason_sql = "'Missing ECO'"
+
+    query = f"""
+        SELECT
+            id,
+            game_number,
+            source_line,
+            date,
+            white,
+            black,
+            result,
+            eco,
+            {reason_sql} AS reason
+        FROM games
+        WHERE {where_sql}
+        ORDER BY game_number DESC
+        LIMIT :limit
+    """
+    return pd.read_sql_query(query, connection, params={"limit": limit})
 
 
 def _build_stats_where_clause(
