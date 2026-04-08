@@ -50,7 +50,6 @@ Useful fields in the app:
 
 - `game_number`: the game's order in the PGN file
 - `source_line`: the starting line of the game in `pgn/all.pgn`
-- `id`: the current database row id after import
 
 The most reliable source reference is `source_line`, because it points directly into the PGN file.
 
@@ -67,6 +66,8 @@ The sidebar includes a `Data quality` filter with these checks:
 ```text
 peletis, Peletis, old_handle
 ```
+
+The sidebar uses British English in user-facing labels, for example `Colour`.
 
 ## Typical cleanup loop
 

@@ -25,7 +25,6 @@ def render_game_summary(game: dict) -> None:
 
     st.write(
         {
-            "Database ID": game["id"],
             "Game Number": game["game_number"],
             "Source Line": game["source_line"],
             "Site": game["site"],

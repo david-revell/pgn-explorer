@@ -37,15 +37,13 @@ def main() -> None:
                 "Data quality",
                 ["All games", "Missing result", "Missing moves", "Not my game"],
             )
-            database_id_text = st.text_input("Database ID")
             game_number_text = st.text_input("Game Number")
             player = st.text_input("Player")
-            color = st.selectbox("Color", ["Either", "White", "Black"])
+            color = st.selectbox("Colour", ["Either", "White", "Black"])
             result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
             eco_prefix = st.text_input("ECO starts with")
             limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
 
-        database_id = int(database_id_text) if database_id_text.strip().isdigit() else None
         game_number = int(game_number_text) if game_number_text.strip().isdigit() else None
 
         st.subheader("My Games")
@@ -56,7 +54,6 @@ def main() -> None:
 
         games_df = load_games(
             connection=connection,
-            database_id=database_id,
             game_number=game_number,
             player=player,
             color=color,
@@ -76,7 +73,7 @@ def main() -> None:
 
         options = {
             (
-                f"id {row.id} | game {row.game_number} | line {row.source_line} | "
+                f"game {row.game_number} | line {row.source_line} | "
                 f"{row.date} | {row.white} vs {row.black} | {row.result}"
             ): int(row.id)
             for row in games_df.itertuples(index=False)
