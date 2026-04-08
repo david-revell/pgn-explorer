@@ -259,19 +259,24 @@ def load_player_summary(
         total_where_sql, total_params = _build_stats_where_clause(
             usernames, "summary_total", "total", game_number, player, color, result, eco_prefix
         )
-        rows.append({"Position": "Total", **_load_result_summary(connection, total_where_sql, total_params)})
+        total_row = {"Colour": "Total", "Position": "Start", **_load_result_summary(connection, total_where_sql, total_params)}
+    else:
+        total_row = None
 
     if color in {"Any", "White"}:
         white_where_sql, white_params = _build_stats_where_clause(
             usernames, "summary_white", "white", game_number, player, color, result, eco_prefix
         )
-        rows.append({"Position": "As White", **_load_result_summary(connection, white_where_sql, white_params)})
+        rows.append({"Colour": "White", "Position": "Start", **_load_result_summary(connection, white_where_sql, white_params)})
 
     if color in {"Any", "Black"}:
         black_where_sql, black_params = _build_stats_where_clause(
             usernames, "summary_black", "black", game_number, player, color, result, eco_prefix
         )
-        rows.append({"Position": "As Black", **_load_result_summary(connection, black_where_sql, black_params)})
+        rows.append({"Colour": "Black", "Position": "Start", **_load_result_summary(connection, black_where_sql, black_params)})
+
+    if total_row is not None:
+        rows.append(total_row)
 
     return pd.DataFrame(rows)
 

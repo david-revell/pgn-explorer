@@ -16,12 +16,13 @@ def render_quality_summary(counts: dict[str, int]) -> None:
     columns = st.columns(3)
     for column, (label, value) in zip(columns, counts.items()):
         colour = "#2e7d32" if value == 0 else "#c62828"
-        status = "OK" if value == 0 else "Needs review"
         column.markdown(
-            f"**{label}: <span style='color:{colour}'>{value:,}</span>**",
+            (
+                f"{label}: "
+                f"<span style='color:{colour}; font-size: 1.8rem; font-weight: 700;'>{value:,}</span>"
+            ),
             unsafe_allow_html=True,
         )
-        column.caption(status)
 
 
 def _format_results_table(table_df: pd.DataFrame, first_column: str) -> pd.DataFrame:
@@ -40,12 +41,19 @@ def _format_results_table(table_df: pd.DataFrame, first_column: str) -> pd.DataF
     formatted_df["Draw"] = (formatted_df["Draw"] / games * 100).fillna(0).map(_format_percent)
     formatted_df["Black"] = (formatted_df["Black"] / games * 100).fillna(0).map(_format_percent)
 
-    column_order = [first_column, "Games", "White", "Draw", "Black"]
+    leading_columns = [
+        column
+        for column in formatted_df.columns
+        if column not in {"Games", "White", "Draw", "Black"}
+    ]
+    column_order = leading_columns + ["Games", "White", "Draw", "Black"]
     return formatted_df[column_order]
 
 
 def render_player_summary(summary_df: pd.DataFrame) -> None:
-    _render_summary_table(_format_results_table(summary_df, "Position"))
+    formatted_df = _format_results_table(summary_df, "Colour")
+    column_order = ["Colour", "Position", "Games", "White", "Draw", "Black"]
+    _render_summary_table(formatted_df[column_order])
 
 
 def render_move_summary(moves_df: pd.DataFrame) -> None:
@@ -53,7 +61,9 @@ def render_move_summary(moves_df: pd.DataFrame) -> None:
         _render_summary_table(pd.DataFrame(columns=["Move", "Games", "White", "Draw", "Black"]))
         return
 
-    _render_summary_table(_format_results_table(moves_df.rename(columns={"move": "Move"}), "Move"))
+    move_df = moves_df.rename(columns={"move": "Move"}).copy()
+    move_df["Move"] = move_df["Move"].map(lambda move: f"1. {move}")
+    _render_summary_table(_format_results_table(move_df, "Move"))
 
 
 def render_game_summary(game: dict) -> None:

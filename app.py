@@ -12,8 +12,8 @@ PLAYER_USERNAMES = "peletis"
 
 
 def main() -> None:
-    st.set_page_config(page_title="pgn-explorer", layout="wide")
-    st.title("pgn-explorer")
+    st.set_page_config(page_title="Opening Explorer", layout="wide")
+    st.title("Opening Explorer")
     st.caption("Search and review a local PGN archive.")
 
     db_path = Path("data/games.db")
@@ -48,7 +48,7 @@ def main() -> None:
         st.subheader("Data Quality")
         render_quality_summary(load_quality_counts(connection, PLAYER_USERNAMES))
 
-        st.subheader("My Games")
+        st.subheader("Position summary")
         render_player_summary(
             load_player_summary(
                 connection=connection,
