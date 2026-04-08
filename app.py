@@ -5,8 +5,10 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from import_pgn import DEFAULT_PGN_PATH, import_archive
 from src.aliases import load_alias_table, resolve_player_aliases
 from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
+from src.pgn_source import get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
 from src.queries import (
     load_data_review_counts,
     load_data_review_games,
@@ -26,6 +28,153 @@ from src.viewer import (
 )
 
 PLAYER_USERNAMES = "peletis"
+
+
+def _get_pending_eco_updates() -> dict[int, str]:
+    pending = st.session_state.get("pending_eco_updates")
+    if pending is None:
+        pending = {}
+        st.session_state["pending_eco_updates"] = pending
+    return pending
+
+
+def _load_or_get_pgn_session(force_reload: bool = False):
+    if force_reload or "pgn_source_session" not in st.session_state:
+        st.session_state["pgn_source_session"] = load_pgn_source_session(DEFAULT_PGN_PATH)
+    return st.session_state["pgn_source_session"]
+
+
+def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
+    st.subheader("Batch ECO editor")
+    status_message = st.session_state.pop("eco_editor_status", "")
+    if status_message:
+        st.success(status_message)
+
+    if not DEFAULT_PGN_PATH.exists():
+        st.warning(f"PGN source not found: {DEFAULT_PGN_PATH}")
+        return
+
+    try:
+        source_session = _load_or_get_pgn_session()
+    except OSError as exc:
+        st.error(f"Could not load PGN source: {exc}")
+        return
+
+    pending_updates = _get_pending_eco_updates()
+    eco_by_game_number = get_eco_by_game_number(source_session)
+
+    action_columns = st.columns([1.3, 1.5, 1.5, 3.7])
+    if action_columns[0].button("Reload source", key="reload_eco_source"):
+        st.session_state["pgn_source_session"] = load_pgn_source_session(DEFAULT_PGN_PATH)
+        source_session = st.session_state["pgn_source_session"]
+        eco_by_game_number = get_eco_by_game_number(source_session)
+        st.rerun()
+
+    if action_columns[1].button("Save ECOs to PGN", key="save_eco_source"):
+        if not pending_updates:
+            st.info("No staged ECO updates to save.")
+        else:
+            try:
+                updated_session = save_eco_updates(source_session, pending_updates)
+            except (OSError, RuntimeError, ValueError) as exc:
+                st.error(str(exc))
+            else:
+                st.session_state["pgn_source_session"] = updated_session
+                st.session_state["pending_eco_updates"] = {}
+                st.session_state["eco_editor_status"] = (
+                    f"Saved {len(pending_updates)} ECO update(s) to {DEFAULT_PGN_PATH}. "
+                    "Rebuild the database when ready."
+                )
+                st.rerun()
+
+    if action_columns[2].button("Rebuild database", key="rebuild_database_from_source"):
+        progress_container = st.container()
+        progress_text = progress_container.empty()
+        progress_bar = progress_container.progress(0.0)
+
+        def render_import_progress(parsed_games: int, total_games: int | None, elapsed_seconds: float) -> None:
+            if total_games:
+                progress_bar.progress(min(parsed_games / total_games, 1.0))
+                progress_text.caption(
+                    f"Parsed {parsed_games:,}/{total_games:,} games in {elapsed_seconds:.1f}s..."
+                )
+            else:
+                progress_bar.progress(0.0)
+                progress_text.caption(f"Parsed {parsed_games:,} games in {elapsed_seconds:.1f}s...")
+
+        def render_import_status(message: str) -> None:
+            progress_text.caption(message)
+
+        try:
+            imported_games = import_archive(
+                DEFAULT_PGN_PATH,
+                DEFAULT_DB_PATH,
+                progress_callback=render_import_progress,
+                status_callback=render_import_status,
+            )
+        except Exception as exc:  # pragma: no cover - surfaced directly in UI
+            progress_bar.empty()
+            st.error(f"Rebuild failed: {exc}")
+        else:
+            progress_bar.progress(1.0)
+            st.session_state["pgn_source_session"] = load_pgn_source_session(DEFAULT_PGN_PATH)
+            st.session_state["eco_editor_status"] = f"Rebuilt the database from source with {imported_games:,} game(s)."
+            st.rerun()
+
+    action_columns[3].caption(
+        f"Staged ECO updates: {len(pending_updates)}. "
+        "Saving updates the source PGN only. Rebuild the database separately when you want the queue refreshed."
+    )
+
+    editor_df = review_df.copy()
+    editor_df["source_eco"] = editor_df["game_number"].map(eco_by_game_number).fillna("")
+    editor_df["new_eco"] = [
+        pending_updates.get(int(game_number), str(source_eco or "").strip())
+        for game_number, source_eco in zip(editor_df["game_number"], editor_df["source_eco"], strict=False)
+    ]
+
+    edited_df = st.data_editor(
+        editor_df[["game_number", "source_line", "date", "white", "black", "result", "source_eco", "new_eco"]],
+        use_container_width=True,
+        hide_index=True,
+        disabled=["game_number", "source_line", "date", "white", "black", "result", "source_eco"],
+        column_config={
+            "game_number": st.column_config.NumberColumn("Game Number", format="%d"),
+            "source_line": st.column_config.NumberColumn("Source Line", format="%d"),
+            "date": "Date",
+            "white": "White",
+            "black": "Black",
+            "result": "Result",
+            "source_eco": "Source ECO",
+            "new_eco": st.column_config.TextColumn("New ECO"),
+        },
+        key="missing_eco_editor",
+    )
+
+    next_updates: dict[int, str] = {}
+    validation_errors: list[str] = []
+    for row in edited_df.itertuples(index=False):
+        raw_value = str(row.new_eco or "").strip()
+        if not raw_value:
+            continue
+        try:
+            next_updates[int(row.game_number)] = validate_eco(raw_value)
+        except ValueError:
+            validation_errors.append(f"Game {int(row.game_number)}: `{raw_value}` is not a valid ECO.")
+
+    st.session_state["pending_eco_updates"] = next_updates
+    if validation_errors:
+        st.error(" ".join(validation_errors[:10]))
+    elif next_updates:
+        st.caption(f"{len(next_updates)} ECO update(s) currently staged.")
+
+    if not review_df.empty:
+        source_only_games = int((editor_df["source_eco"].fillna("").str.strip() != "").sum())
+        if source_only_games:
+            st.info(
+                f"{source_only_games} game(s) in this queue already have an ECO in `all.pgn` but still appear here "
+                "because the database has not been rebuilt yet."
+            )
 
 
 def render_opening_explorer(connection) -> None:
@@ -173,6 +322,8 @@ def render_data_review(connection) -> None:
     st.markdown(f"**{review_type} games**")
     if review_df.empty:
         st.info(f"No games are currently in the `{review_type}` queue.")
+    elif review_type == "Missing ECO":
+        _render_missing_eco_editor(review_df)
     render_game_list_and_detail(connection, review_df)
 
     alias_df = load_alias_table()

@@ -79,6 +79,14 @@ The `Data review` page currently has these queues:
 
 This page is intended as a review queue rather than an automatic cleanup step.
 
+For `Missing ECO`, the app now includes a batch editor:
+
+- stage ECO values for many games in Streamlit
+- save those ECO tags back to `pgn/all.pgn`
+- rebuild the database separately when you are ready
+
+This avoids a full rebuild after every single ECO change. Until you rebuild, the database-backed queue will still show the older ECO state.
+
 ## Recent Games Ordering
 
 The `Recent games` section on the opening explorer page is ordered by:
@@ -97,10 +105,11 @@ Fully missing dates sort last.
 
 1. Run `streamlit run app.py`
 2. Open `Data review`
-3. Find the bad game and note its `source_line`
-4. Edit or delete that game in `pgn/all.pgn`
-5. Rerun `python import_pgn.py --pgn pgn/all.pgn`
-6. Refresh the app and repeat until the counts are clean
+3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to `pgn/all.pgn`
+4. For other fixes, find the bad game and note its `source_line`
+5. Edit or delete that game in `pgn/all.pgn`
+6. Rerun `python import_pgn.py --pgn pgn/all.pgn`
+7. Refresh the app and repeat until the counts are clean
 
 ## Scope
 

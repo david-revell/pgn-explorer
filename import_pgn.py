@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
@@ -35,22 +36,44 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def import_archive(
+    pgn_path: Path,
+    db_path: Path,
+    progress_callback: Callable[[int, int | None, float], None] | None = None,
+    status_callback: Callable[[str], None] | None = None,
+) -> int:
+    started = perf_counter()
+    print(f"Reading games from {pgn_path} ...")
+    print("The import rebuilds the database from this PGN file.")
+
+    def handle_progress(parsed_games: int, total_games: int | None, elapsed_seconds: float) -> None:
+        report_progress(parsed_games, total_games, elapsed_seconds)
+        if progress_callback is not None:
+            progress_callback(parsed_games, total_games, elapsed_seconds)
+
+    if status_callback is not None:
+        status_callback("Parsing PGN...")
+    games = parse_pgn_file(pgn_path, progress_callback=handle_progress)
+    print(f"Parsed {len(games)} games in {perf_counter() - started:.1f}s.")
+
+    with get_connection(db_path) as connection:
+        if status_callback is not None:
+            status_callback(f"Writing {len(games)} games to the database...")
+        print(f"Writing {len(games)} games to {db_path} ...")
+        replace_games(connection, games)
+
+    if status_callback is not None:
+        status_callback(f"Finished rebuild with {len(games)} games.")
+    print(f"Wrote database to {db_path} in {perf_counter() - started:.1f}s.")
+    return len(games)
+
+
 def main() -> None:
     args = parse_args()
     if not args.pgn.exists():
         raise SystemExit(f"PGN file not found: {args.pgn}")
 
-    started = perf_counter()
-    print(f"Reading games from {args.pgn} ...")
-    print("The import rebuilds the database from this PGN file.")
-    games = parse_pgn_file(args.pgn, progress_callback=report_progress)
-    print(f"Parsed {len(games)} games in {perf_counter() - started:.1f}s.")
-
-    with get_connection(args.db) as connection:
-        print(f"Writing {len(games)} games to {args.db} ...")
-        replace_games(connection, games)
-
-    print(f"Wrote database to {args.db} in {perf_counter() - started:.1f}s.")
+    import_archive(args.pgn, args.db)
 
 
 if __name__ == "__main__":
