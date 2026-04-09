@@ -223,22 +223,6 @@ def render_opening_explorer(connection) -> None:
         alias_text = ", ".join(resolved_player_aliases["display_aliases"])
         st.info(f"Player aliases: {resolved_player_aliases['canonical_name']} -> {alias_text}")
 
-    st.markdown(f"**Current position:** {position_label}")
-    try:
-        board, last_move = build_board_from_san_sequence(move_sequence)
-    except ValueError as exc:
-        st.warning(f"Could not render board for the current move path: {exc}")
-    else:
-        render_board(board, last_move=last_move, size=360)
-    if move_sequence:
-        nav_columns = st.columns([1, 1, 6])
-        if nav_columns[0].button("Back"):
-            st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
-            st.rerun()
-        if nav_columns[1].button("Reset"):
-            st.session_state["move_sequence"] = []
-            st.rerun()
-
     render_player_summary(
         load_player_summary(
             connection=connection,
@@ -252,7 +236,24 @@ def render_opening_explorer(connection) -> None:
             eco_prefix=eco_prefix,
         )
     )
-    st.markdown("<div style='margin-top: 1.15rem; margin-bottom: 0.35rem; font-weight: 700;'>Move breakdown</div>", unsafe_allow_html=True)
+
+    try:
+        board, last_move = build_board_from_san_sequence(move_sequence)
+    except ValueError as exc:
+        st.warning(f"Could not render board for the current move path: {exc}")
+    else:
+        render_board(board, last_move=last_move, size=520)
+        if position_label:
+            st.markdown(f"<div style='text-align:center; font-weight:600;'>{position_label}</div>", unsafe_allow_html=True)
+        if move_sequence:
+            left_pad, back_column, reset_column, right_pad = st.columns([3, 1, 1, 3])
+            if back_column.button("Back"):
+                st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
+                st.rerun()
+            if reset_column.button("Reset"):
+                st.session_state["move_sequence"] = []
+                st.rerun()
+
     move_side = "total" if color == "Any" else color.lower()
     selected_move = render_clickable_move_summary(
         load_move_summary(
@@ -366,6 +367,9 @@ def main() -> None:
     st.markdown(
         """
         <style>
+        h1 {
+            text-align: center;
+        }
         div.stButton > button {
             background: #e4f0e2;
             border: 1px solid #b7cfb3;
