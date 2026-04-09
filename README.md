@@ -47,7 +47,12 @@ The app currently has two pages:
 - `Opening explorer`: explore openings, filter games, and drill into positions move by move
 - `Data review`: review games with targeted cleanup queues
 
-The sidebar also includes a `Board bottom` control so boards can be shown from White's or Black's perspective.
+The `Opening explorer` currently includes:
+
+- a board for the current position
+- a narrow control strip with rotate, back, and reset actions
+- a move breakdown panel beside the board
+- an editable move text input under the board row, so the current line can be typed and resubmitted directly
 
 ## Cleanup workflow
 
@@ -120,4 +125,5 @@ Current first version:
 - Import PGN games into a local SQLite database
 - Search and filter games in Streamlit
 - View the current opening position on a board while exploring moves
-- View PGN, moves, and a board replay for a selected game
+- Edit missing ECO tags in batches and write them back to `pgn/all.pgn`
+- View the selected game's PGN directly

@@ -203,6 +203,7 @@ def render_clickable_move_summary(
     moves_df: pd.DataFrame,
     ply_index: int,
     key_prefix: str,
+    show_move_prefix: bool = True,
 ) -> str | None:
     if moves_df.empty:
         render_move_summary(moves_df)
@@ -216,7 +217,7 @@ def render_clickable_move_summary(
 
     for row in moves_df.itertuples(index=False):
         columns = st.columns([0.9, 0.9, 5.2])
-        move_label = format_move_label(row.move, ply_index)
+        move_label = format_move_label(row.move, ply_index) if show_move_prefix else str(row.move)
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
 

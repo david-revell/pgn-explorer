@@ -8,6 +8,7 @@ import streamlit as st
 from import_pgn import DEFAULT_PGN_PATH, import_archive
 from src.aliases import load_alias_table, resolve_player_aliases
 from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
+from src.move_text import parse_move_text
 from src.pgn_source import get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
 from src.queries import (
     load_data_review_counts,
@@ -44,6 +45,14 @@ def _load_or_get_pgn_session(force_reload: bool = False):
     if force_reload or "pgn_source_session" not in st.session_state:
         st.session_state["pgn_source_session"] = load_pgn_source_session(DEFAULT_PGN_PATH)
     return st.session_state["pgn_source_session"]
+
+
+def _sync_opening_move_text(move_sequence: tuple[str, ...]) -> str:
+    move_text = format_position_label(move_sequence)
+    if st.session_state.get("opening_move_text_synced_sequence") != move_sequence:
+        st.session_state["opening_move_text"] = move_text
+        st.session_state["opening_move_text_synced_sequence"] = move_sequence
+    return move_text
 
 
 def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
@@ -201,16 +210,15 @@ def _render_game_detail_only(connection, games_df: pd.DataFrame) -> None:
 def render_opening_explorer(connection) -> None:
     with st.sidebar:
         st.header("Filters")
-        game_number_text = st.text_input("Game Number")
         player = st.text_input("Player")
         color = st.selectbox("Colour", ["Any", "White", "Black"])
         result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
         eco_prefix = st.text_input("ECO starts with")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
 
-    game_number = int(game_number_text) if game_number_text.strip().isdigit() else None
     move_sequence = tuple(st.session_state["move_sequence"])
     position_label = format_position_label(move_sequence)
+    current_move_text = _sync_opening_move_text(move_sequence)
     critical_counts = load_quality_counts(connection, PLAYER_USERNAMES)
     active_critical = {label: value for label, value in critical_counts.items() if value > 0}
     resolved_player_aliases = resolve_player_aliases(player)
@@ -227,7 +235,6 @@ def render_opening_explorer(connection) -> None:
         load_player_summary(
             connection=connection,
             usernames=PLAYER_USERNAMES,
-            game_number=game_number,
             move_sequence=move_sequence,
             position_label=position_label,
             player=player,
@@ -236,47 +243,71 @@ def render_opening_explorer(connection) -> None:
             eco_prefix=eco_prefix,
         )
     )
-
-    try:
-        board, last_move = build_board_from_san_sequence(move_sequence)
-    except ValueError as exc:
-        st.warning(f"Could not render board for the current move path: {exc}")
-    else:
-        render_board(board, last_move=last_move, size=520)
-        if position_label:
-            st.markdown(f"<div style='text-align:center; font-weight:600;'>{position_label}</div>", unsafe_allow_html=True)
-        if move_sequence:
-            left_pad, back_column, reset_column, right_pad = st.columns([3, 1, 1, 3])
-            if back_column.button("Back"):
-                st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
-                st.rerun()
-            if reset_column.button("Reset"):
-                st.session_state["move_sequence"] = []
-                st.rerun()
+    st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
 
     move_side = "total" if color == "Any" else color.lower()
-    selected_move = render_clickable_move_summary(
-        load_move_summary(
-            connection=connection,
-            usernames=PLAYER_USERNAMES,
-            side=move_side,
-            game_number=game_number,
-            move_sequence=move_sequence,
-            player=player,
-            color=color,
-            result=result,
-            eco_prefix=eco_prefix,
-        ),
-        ply_index=len(move_sequence),
-        key_prefix=f"move_{'__'.join(move_sequence) or 'start'}_{color}_{player}_{result}_{eco_prefix}",
+    board_column, left_gap_column, controls_column, right_gap_column, moves_column = st.columns([1.28, 0.08, 0.22, 0.08, 1.0])
+
+    with board_column:
+        try:
+            board, last_move = build_board_from_san_sequence(move_sequence)
+        except ValueError as exc:
+            st.warning(f"Could not render board for the current move path: {exc}")
+        else:
+            render_board(board, last_move=last_move, size=520)
+
+    with controls_column:
+        st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
+        if st.button("↻", key="rotate_opening_board", help="Rotate board", use_container_width=True):
+            st.session_state["board_orientation"] = (
+                "Black" if st.session_state["board_orientation"] == "White" else "White"
+            )
+            st.rerun()
+        if st.button("Back", key="opening_back", disabled=not move_sequence, use_container_width=True):
+            st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
+            st.rerun()
+        if st.button("Reset", key="opening_reset", disabled=not move_sequence, use_container_width=True):
+            st.session_state["move_sequence"] = []
+            st.rerun()
+
+    with moves_column:
+        with st.container(height=540):
+            selected_move = render_clickable_move_summary(
+                load_move_summary(
+                    connection=connection,
+                    usernames=PLAYER_USERNAMES,
+                    side=move_side,
+                    move_sequence=move_sequence,
+                    player=player,
+                    color=color,
+                    result=result,
+                    eco_prefix=eco_prefix,
+                ),
+                ply_index=len(move_sequence),
+                key_prefix=f"move_{'__'.join(move_sequence) or 'start'}_{color}_{player}_{result}_{eco_prefix}",
+                show_move_prefix=False,
+            )
+    entered_move_text = st.text_input(
+        "Moves",
+        value=st.session_state.get("opening_move_text", current_move_text),
+        key="opening_move_text",
+        label_visibility="collapsed",
+        placeholder="Enter moves and press Enter",
     )
+    if entered_move_text != current_move_text:
+        try:
+            st.session_state["move_sequence"] = list(parse_move_text(entered_move_text))
+        except ValueError as exc:
+            st.warning(str(exc))
+        else:
+            st.session_state["opening_move_text_synced_sequence"] = tuple(st.session_state["move_sequence"])
+            st.rerun()
     if selected_move is not None:
         st.session_state["move_sequence"] = [*st.session_state["move_sequence"], selected_move]
         st.rerun()
 
     games_df = load_games(
         connection=connection,
-        game_number=game_number,
         move_sequence=move_sequence,
         player=player,
         color=color,
@@ -380,6 +411,7 @@ def main() -> None:
             line-height: 1.15;
             min-height: 2rem;
             padding: 0.2rem 0.65rem;
+            white-space: nowrap;
         }
         div.stButton > button:hover {
             background: #d5e7d2;
@@ -401,7 +433,6 @@ def main() -> None:
 
     with st.sidebar:
         page = st.radio("Page", ["Opening explorer", "Data review"])
-        st.selectbox("Board bottom", ["White", "Black"], key="board_orientation")
 
     st.title("Opening Explorer" if page == "Opening explorer" else "Data review")
 
