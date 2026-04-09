@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from io import StringIO
+
+import chess
+import chess.pgn
+import chess.svg
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def _format_percent(value: float) -> str:
@@ -220,11 +226,130 @@ def render_clickable_move_summary(
     return None
 
 
+@st.cache_data(show_spinner=False)
+def _load_game_replay_data(pgn_text: str) -> dict[str, object]:
+    game = chess.pgn.read_game(StringIO(pgn_text))
+    if game is None:
+        return {"san_moves": [], "uci_moves": []}
+
+    board = game.board()
+    san_moves: list[str] = []
+    uci_moves: list[str] = []
+    for move in game.mainline_moves():
+        san_moves.append(board.san(move))
+        uci_moves.append(move.uci())
+        board.push(move)
+
+    return {
+        "san_moves": san_moves,
+        "uci_moves": uci_moves,
+    }
+
+
+def _build_board_position(uci_moves: list[str], ply_index: int) -> tuple[chess.Board, chess.Move | None]:
+    board = chess.Board()
+    last_move: chess.Move | None = None
+    for move_uci in uci_moves[:ply_index]:
+        last_move = chess.Move.from_uci(move_uci)
+        board.push(last_move)
+    return board, last_move
+
+
+def build_board_from_san_sequence(move_sequence: tuple[str, ...]) -> tuple[chess.Board, chess.Move | None]:
+    board = chess.Board()
+    last_move: chess.Move | None = None
+    for san_move in move_sequence:
+        last_move = board.parse_san(san_move)
+        board.push(last_move)
+    return board, last_move
+
+
+def render_board(board: chess.Board, last_move: chess.Move | None = None, size: int = 440) -> None:
+    orientation = chess.WHITE if st.session_state.get("board_orientation", "White") == "White" else chess.BLACK
+    board_svg = chess.svg.board(board=board, lastmove=last_move, size=size, orientation=orientation)
+    components.html(board_svg, height=size + 20)
+
+
+def _format_replay_status(ply_index: int, total_plies: int) -> str:
+    if ply_index <= 0:
+        return f"Start position | 0/{total_plies} plies"
+
+    move_number = (ply_index + 1) // 2
+    side = "White" if ply_index % 2 == 1 else "Black"
+    return f"After {move_number}. {side} | {ply_index}/{total_plies} plies"
+
+
+def _render_move_list(san_moves: list[str], current_ply: int) -> None:
+    if not san_moves:
+        st.caption("No moves found.")
+        return
+
+    tokens: list[str] = []
+    for index, san_move in enumerate(san_moves):
+        move_number = index // 2 + 1
+        if index % 2 == 0:
+            token = f"{move_number}. {san_move}"
+        else:
+            token = san_move
+
+        if index + 1 == current_ply:
+            tokens.append(f"**[{token}]**")
+        else:
+            tokens.append(token)
+
+    st.markdown(" ".join(tokens))
+
+
 def render_game_summary(game: dict) -> None:
     st.subheader(f"{game['white']} vs {game['black']}")
     st.caption(
         f"{game['date']} | {game['result']} | ECO {game['eco'] or '?'} | {game['event'] or 'Unknown event'}"
     )
+
+    replay_data = _load_game_replay_data(game["pgn_text"])
+    san_moves = [str(move) for move in replay_data["san_moves"]]
+    uci_moves = [str(move) for move in replay_data["uci_moves"]]
+    total_plies = len(uci_moves)
+    viewer_key = f"game_viewer_{game['id']}"
+    ply_key = f"{viewer_key}_ply"
+
+    if ply_key not in st.session_state or st.session_state[ply_key] > total_plies:
+        st.session_state[ply_key] = 0
+
+    current_ply = int(st.session_state[ply_key])
+
+    st.markdown("**Board**")
+    control_columns = st.columns([1, 1, 1, 1, 5])
+    if control_columns[0].button("Start", key=f"{viewer_key}_start"):
+        st.session_state[ply_key] = 0
+        st.rerun()
+    if control_columns[1].button("Back", key=f"{viewer_key}_back", disabled=current_ply <= 0):
+        st.session_state[ply_key] = current_ply - 1
+        st.rerun()
+    if control_columns[2].button("Next", key=f"{viewer_key}_next", disabled=current_ply >= total_plies):
+        st.session_state[ply_key] = current_ply + 1
+        st.rerun()
+    if control_columns[3].button("End", key=f"{viewer_key}_end", disabled=current_ply >= total_plies):
+        st.session_state[ply_key] = total_plies
+        st.rerun()
+    control_columns[4].caption(_format_replay_status(current_ply, total_plies))
+
+    slider_value = st.slider(
+        "Ply",
+        min_value=0,
+        max_value=total_plies,
+        value=current_ply,
+        key=f"{viewer_key}_slider",
+    )
+    if slider_value != current_ply:
+        st.session_state[ply_key] = slider_value
+        current_ply = slider_value
+
+    board, last_move = _build_board_position(uci_moves, current_ply)
+    render_board(board, last_move=last_move, size=440)
+
+    st.markdown("**Moves**")
+    _render_move_list(san_moves, current_ply)
 
     st.markdown("**PGN**")
     st.code(game["pgn_text"], language="pgn")

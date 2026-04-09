@@ -20,8 +20,10 @@ from src.queries import (
     load_quality_counts,
 )
 from src.viewer import (
+    build_board_from_san_sequence,
     format_position_label,
     render_clickable_move_summary,
+    render_board,
     render_game_summary,
     render_player_summary,
     render_quality_summary,
@@ -222,6 +224,12 @@ def render_opening_explorer(connection) -> None:
         st.info(f"Player aliases: {resolved_player_aliases['canonical_name']} -> {alias_text}")
 
     st.markdown(f"**Current position:** {position_label}")
+    try:
+        board, last_move = build_board_from_san_sequence(move_sequence)
+    except ValueError as exc:
+        st.warning(f"Could not render board for the current move path: {exc}")
+    else:
+        render_board(board, last_move=last_move, size=360)
     if move_sequence:
         nav_columns = st.columns([1, 1, 6])
         if nav_columns[0].button("Back"):
@@ -384,9 +392,12 @@ def main() -> None:
 
     if "move_sequence" not in st.session_state:
         st.session_state["move_sequence"] = []
+    if "board_orientation" not in st.session_state:
+        st.session_state["board_orientation"] = "White"
 
     with st.sidebar:
         page = st.radio("Page", ["Opening explorer", "Data review"])
+        st.selectbox("Board bottom", ["White", "Black"], key="board_orientation")
 
     st.title("Opening Explorer" if page == "Opening explorer" else "Data review")
 
