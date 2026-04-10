@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from io import StringIO
 
 import chess
+import chess.pgn
 import pandas as pd
 import streamlit as st
 
@@ -26,7 +28,7 @@ from src.queries import (
     load_player_summary,
     load_quality_counts,
 )
-from src.positions import build_position_history
+from src.positions import build_position_history, build_position_key
 from src.viewer import (
     build_board_from_san_sequence,
     format_position_label,
@@ -222,6 +224,34 @@ def _load_latest_opening_for_move_sequence_cached(
     return None
 
 
+@st.cache_data(show_spinner=False)
+def _load_latest_opening_for_seed_and_moves_cached(
+    _db_version: int,
+    seed_fen: str,
+    move_sequence: tuple[str, ...],
+) -> dict[str, str] | None:
+    board = chess.Board(seed_fen)
+    position_history = [build_position_key(board)]
+    for san_move in move_sequence:
+        board.push(board.parse_san(san_move))
+        position_history.append(build_position_key(board))
+
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        opening_map = load_openings_by_position_keys(connection, position_history)
+
+    for position_key in reversed(position_history):
+        row = opening_map.get(position_key)
+        if row is not None:
+            return {
+                "eco": str(row["eco"]),
+                "name": str(row["name"]),
+                "pgn": str(row["pgn"]),
+                "uci": str(row["uci"]),
+                "position_key": str(row["position_key"]),
+            }
+    return None
+
+
 def _render_opening_label(opening: dict[str, str] | None) -> None:
     if opening is None:
         st.caption("No named position match yet.")
@@ -247,11 +277,62 @@ def _load_or_get_pgn_session(force_reload: bool = False):
     return st.session_state["pgn_source_session"]
 
 
-def _sync_opening_move_text(move_sequence: tuple[str, ...]) -> str:
-    move_text = format_position_label(move_sequence)
-    if st.session_state.get("opening_move_text_synced_sequence") != move_sequence:
+def _parse_move_text_from_fen(fen: str, move_text: str) -> tuple[str, ...]:
+    cleaned_text = move_text.strip()
+    if not cleaned_text:
+        return ()
+
+    if cleaned_text.split()[-1] not in {"1-0", "0-1", "1/2-1/2", "*"}:
+        cleaned_text = f"{cleaned_text} *"
+
+    game_text = f'[Event "?"]\n[SetUp "1"]\n[FEN "{fen}"]\n\n{cleaned_text}'
+    game = chess.pgn.read_game(StringIO(game_text))
+    if game is None:
+        raise ValueError("Could not parse move text.")
+
+    board = game.board()
+    san_moves: list[str] = []
+    for move in game.mainline_moves():
+        san_moves.append(board.san(move))
+        board.push(move)
+    return tuple(san_moves)
+
+
+def _format_position_label_from_board(board: chess.Board, move_sequence: tuple[str, ...]) -> str:
+    if not move_sequence:
+        return ""
+
+    formatted_board = board.copy()
+    parts: list[str] = []
+    for san_move in move_sequence:
+        if formatted_board.turn == chess.WHITE:
+            parts.append(f"{formatted_board.fullmove_number}. {san_move}")
+        else:
+            parts.append(f"{formatted_board.fullmove_number}... {san_move}")
+        formatted_board.push(formatted_board.parse_san(san_move))
+    return " ".join(parts)
+
+
+def _build_board_from_seed_and_moves(seed_fen: str, move_sequence: tuple[str, ...]) -> tuple[chess.Board, chess.Move | None]:
+    board = chess.Board(seed_fen)
+    last_move = None
+    for san_move in move_sequence:
+        last_move = board.parse_san(san_move)
+        board.push(last_move)
+    return board, last_move
+
+
+def _sync_opening_move_text(move_sequence: tuple[str, ...], seed_fen: str = "") -> str:
+    if seed_fen:
+        move_text = _format_position_label_from_board(chess.Board(seed_fen), move_sequence)
+        sync_key = (seed_fen, *move_sequence)
+    else:
+        move_text = format_position_label(move_sequence)
+        sync_key = move_sequence
+
+    if st.session_state.get("opening_move_text_synced_sequence") != sync_key:
         st.session_state["opening_move_text"] = move_text
-        st.session_state["opening_move_text_synced_sequence"] = move_sequence
+        st.session_state["opening_move_text_synced_sequence"] = sync_key
     return move_text
 
 
@@ -408,6 +489,9 @@ def _render_game_detail_only(connection, games_df: pd.DataFrame) -> None:
 
 
 def render_opening_explorer(connection) -> None:
+    if st.session_state.pop("clear_opening_seed_fen", False):
+        st.session_state["opening_seed_fen"] = ""
+
     with st.sidebar:
         st.header("Filters")
         player = st.text_input("Player")
@@ -415,20 +499,52 @@ def render_opening_explorer(connection) -> None:
         result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
         eco_prefix = st.text_input("ECO starts with")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
+        st.header("Position")
+        seed_fen_text = st.text_area(
+            "FEN",
+            value=st.session_state.get("opening_seed_fen", ""),
+            key="opening_seed_fen",
+            height=68,
+            placeholder="Optional: paste a FEN to start from that position",
+        ).strip()
 
-    move_sequence = tuple(st.session_state["move_sequence"])
-    current_move_text = _sync_opening_move_text(move_sequence)
+    active_seed_fen = ""
+    seed_fen_error = ""
+    if seed_fen_text:
+        try:
+            active_seed_fen = chess.Board(seed_fen_text).fen()
+        except ValueError as exc:
+            seed_fen_error = str(exc)
+
+    if active_seed_fen:
+        if st.session_state.get("opening_seed_move_sequence_fen") != active_seed_fen:
+            st.session_state["opening_seed_move_sequence"] = []
+            st.session_state["opening_seed_move_sequence_fen"] = active_seed_fen
+        move_sequence = tuple(st.session_state.get("opening_seed_move_sequence", []))
+    else:
+        move_sequence = tuple(st.session_state["move_sequence"])
+
+    current_move_text = _sync_opening_move_text(move_sequence, active_seed_fen)
 
     entered_move_text = st.session_state.get("opening_move_text", current_move_text)
     move_text_error = ""
     if entered_move_text != current_move_text:
         try:
-            move_sequence = parse_move_text(entered_move_text)
+            if active_seed_fen:
+                move_sequence = _parse_move_text_from_fen(active_seed_fen, entered_move_text)
+            else:
+                move_sequence = parse_move_text(entered_move_text)
         except ValueError as exc:
             move_text_error = str(exc)
         else:
-            st.session_state["move_sequence"] = list(move_sequence)
-            st.session_state["opening_move_text_synced_sequence"] = move_sequence
+            if active_seed_fen:
+                st.session_state["opening_seed_move_sequence"] = list(move_sequence)
+                st.session_state["opening_seed_move_sequence_fen"] = active_seed_fen
+            else:
+                st.session_state["move_sequence"] = list(move_sequence)
+            st.session_state["opening_move_text_synced_sequence"] = (
+                (active_seed_fen, *move_sequence) if active_seed_fen else move_sequence
+            )
 
     db_version = _get_db_version_token()
     position_label = format_position_label(move_sequence)
@@ -444,35 +560,69 @@ def render_opening_explorer(connection) -> None:
         alias_text = ", ".join(resolved_player_aliases["display_aliases"])
         st.info(f"Player aliases: {resolved_player_aliases['canonical_name']} -> {alias_text}")
 
-    render_player_summary(
-        _load_player_summary_cached(
-            db_version,
-            PLAYER_USERNAMES,
-            move_sequence,
-            position_label,
-            player,
-            color,
-            result,
-            eco_prefix,
+    if seed_fen_error:
+        st.warning(f"Invalid FEN: {seed_fen_error}")
+
+    if not active_seed_fen:
+        render_player_summary(
+            _load_player_summary_cached(
+                db_version,
+                PLAYER_USERNAMES,
+                move_sequence,
+                position_label,
+                player,
+                color,
+                result,
+                eco_prefix,
+            )
         )
-    )
-    st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
 
     move_side = "total" if color == "Any" else color.lower()
     board_column, left_gap_column, controls_column, right_gap_column, moves_column = st.columns([1.28, 0.08, 0.22, 0.08, 1.0])
     current_fen = ""
+    current_ply_index = len(move_sequence)
 
     with board_column:
         try:
-            board, last_move = build_board_from_san_sequence(move_sequence)
+            if active_seed_fen:
+                board, last_move = _build_board_from_seed_and_moves(active_seed_fen, move_sequence)
+            else:
+                board, last_move = build_board_from_san_sequence(move_sequence)
         except ValueError as exc:
-            st.warning(f"Could not render board for the current move path: {exc}")
+            warning_prefix = "Could not render board for the seeded continuation" if active_seed_fen else "Could not render board for the current move path"
+            st.warning(f"{warning_prefix}: {exc}")
         else:
             current_fen = board.fen()
+            current_ply_index = board.ply()
             render_board(board, last_move=last_move, size=520)
 
     if current_fen:
-        opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
+        if active_seed_fen:
+            opening = _load_latest_opening_for_seed_and_moves_cached(db_version, active_seed_fen, move_sequence)
+        else:
+            opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
+        if active_seed_fen:
+            st.markdown(
+                """
+                <div style="
+                    background:#e8f3fb;
+                    border:1px solid #c7dceb;
+                    border-radius:0.6rem;
+                    padding:0.45rem 0.7rem 0.3rem 0.7rem;
+                    margin:0.15rem 0 0.35rem 0;
+                ">
+                    <div style="color:#b33a3a; font-size:0.95rem; font-weight:600;">FEN mode</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Exit FEN mode", key="exit_fen_mode", use_container_width=False):
+                st.session_state["clear_opening_seed_fen"] = True
+                st.session_state["opening_seed_move_sequence"] = []
+                st.session_state["opening_seed_move_sequence_fen"] = None
+                st.session_state["opening_move_text_synced_sequence"] = None
+                st.rerun()
         _render_opening_label(opening)
 
     with controls_column:
@@ -483,10 +633,16 @@ def render_opening_explorer(connection) -> None:
             )
             st.rerun()
         if st.button("Back", key="opening_back", disabled=not move_sequence, use_container_width=True):
-            st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
+            if active_seed_fen:
+                st.session_state["opening_seed_move_sequence"] = st.session_state["opening_seed_move_sequence"][:-1]
+            else:
+                st.session_state["move_sequence"] = st.session_state["move_sequence"][:-1]
             st.rerun()
         if st.button("Reset", key="opening_reset", disabled=not move_sequence, use_container_width=True):
-            st.session_state["move_sequence"] = []
+            if active_seed_fen:
+                st.session_state["opening_seed_move_sequence"] = []
+            else:
+                st.session_state["move_sequence"] = []
             st.rerun()
 
     with moves_column:
@@ -507,8 +663,8 @@ def render_opening_explorer(connection) -> None:
 
             selected_move = render_clickable_move_summary(
                 move_summary_df,
-                ply_index=len(move_sequence),
-                key_prefix=f"position_move_{len(move_sequence)}_{color}_{player}_{result}_{eco_prefix}",
+                ply_index=current_ply_index,
+                key_prefix=f"position_move_{current_ply_index}_{color}_{player}_{result}_{eco_prefix}_{active_seed_fen}",
                 show_move_prefix=False,
             )
     entered_move_text = st.text_input(
@@ -521,7 +677,11 @@ def render_opening_explorer(connection) -> None:
     if move_text_error:
         st.warning(move_text_error)
     if selected_move is not None:
-        st.session_state["move_sequence"] = [*move_sequence, selected_move]
+        if active_seed_fen:
+            st.session_state["opening_seed_move_sequence"] = [*move_sequence, selected_move]
+            st.session_state["opening_seed_move_sequence_fen"] = active_seed_fen
+        else:
+            st.session_state["move_sequence"] = [*move_sequence, selected_move]
         st.rerun()
 
     if current_fen:
@@ -591,64 +751,6 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
 
     if selected_game is not None:
         render_game_summary(dict(selected_game))
-
-
-def render_position_explorer(connection) -> None:
-    default_fen = st.session_state.get("position_explorer_fen", chess.STARTING_FEN)
-
-    with st.sidebar:
-        st.header("Position explorer")
-        limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25, key="position_limit")
-
-    fen_text = st.text_area(
-        "FEN",
-        value=default_fen,
-        key="position_explorer_fen",
-        height=80,
-        placeholder="Paste a FEN here",
-    ).strip()
-    st.caption(
-        "This page is kept as a direct FEN lookup and validation tool while the main Opening Explorer is being "
-        "moved over to full position-based exploration."
-    )
-
-    if not fen_text:
-        st.info("Paste a FEN to explore the stored positions table.")
-        return
-
-    try:
-        board = chess.Board(fen_text)
-    except ValueError as exc:
-        st.warning(f"Invalid FEN: {exc}")
-        return
-
-    db_version = _get_db_version_token()
-    next_moves_df = _load_next_moves_by_position_cached(db_version, fen_text)
-    games_df = _load_games_by_position_cached(
-        db_version,
-        fen_text,
-        "",
-        "Any",
-        "Any",
-        "",
-        PLAYER_USERNAMES,
-        limit,
-    )
-
-    board_column, moves_column = st.columns([1.18, 1.0])
-    with board_column:
-        render_board(board, size=520)
-        opening = _load_opening_by_position_cached(db_version, fen_text)
-        _render_opening_label(opening)
-    with moves_column:
-        st.subheader("Next moves")
-        if next_moves_df.empty:
-            st.info("No stored next moves for this position.")
-        else:
-            st.dataframe(next_moves_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Matching games")
-    render_game_list_and_detail(connection, games_df)
 
 
 def render_data_review(connection) -> None:
@@ -727,11 +829,10 @@ def main() -> None:
         st.session_state["board_orientation"] = "White"
 
     with st.sidebar:
-        page = st.radio("Page", ["Opening explorer", "Position explorer", "Data review"])
+        page = st.radio("Page", ["Opening explorer", "Data review"])
 
     title = {
         "Opening explorer": "Opening Explorer",
-        "Position explorer": "Position Explorer",
         "Data review": "Data review",
     }[page]
     st.title(title)
@@ -754,8 +855,6 @@ def main() -> None:
 
         if page == "Opening explorer":
             render_opening_explorer(connection)
-        elif page == "Position explorer":
-            render_position_explorer(connection)
         else:
             render_data_review(connection)
 
