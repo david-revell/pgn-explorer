@@ -150,10 +150,24 @@ def _load_games_cached(
 def _load_games_by_position_cached(
     _db_version: int,
     fen: str,
+    player: str,
+    color: str,
+    result: str,
+    eco_prefix: str,
+    usernames: str,
     limit: int,
 ) -> pd.DataFrame:
     with get_connection(DEFAULT_DB_PATH) as connection:
-        return load_games_by_position(connection, fen, limit=limit)
+        return load_games_by_position(
+            connection,
+            fen,
+            player=player,
+            color=color,
+            result=result,
+            eco_prefix=eco_prefix,
+            usernames=usernames,
+            limit=limit,
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -452,16 +466,35 @@ def render_opening_explorer(connection) -> None:
         st.session_state["move_sequence"] = [*move_sequence, selected_move]
         st.rerun()
 
-    games_df = _load_games_cached(
-        db_version,
-        move_sequence,
-        player,
-        color,
-        result,
-        eco_prefix,
-        PLAYER_USERNAMES,
-        limit,
-    )
+    if current_fen:
+        games_df = _load_games_by_position_cached(
+            db_version,
+            current_fen,
+            player,
+            color,
+            result,
+            eco_prefix,
+            PLAYER_USERNAMES,
+            limit,
+        )
+    else:
+        games_df = pd.DataFrame(
+            columns=[
+                "id",
+                "game_number",
+                "ply",
+                "source_line",
+                "date",
+                "white",
+                "black",
+                "result",
+                "eco",
+                "white_elo",
+                "black_elo",
+                "event",
+                "site",
+            ]
+        )
 
     st.subheader("Recent games")
     render_game_list_and_detail(connection, games_df)
@@ -516,6 +549,10 @@ def render_position_explorer(connection) -> None:
         height=80,
         placeholder="Paste a FEN here",
     ).strip()
+    st.caption(
+        "This page is kept as a direct FEN lookup and validation tool while the main Opening Explorer is being "
+        "moved over to full position-based exploration."
+    )
 
     if not fen_text:
         st.info("Paste a FEN to explore the stored positions table.")
@@ -529,7 +566,16 @@ def render_position_explorer(connection) -> None:
 
     db_version = _get_db_version_token()
     next_moves_df = _load_next_moves_by_position_cached(db_version, fen_text)
-    games_df = _load_games_by_position_cached(db_version, fen_text, limit)
+    games_df = _load_games_by_position_cached(
+        db_version,
+        fen_text,
+        "",
+        "Any",
+        "Any",
+        "",
+        PLAYER_USERNAMES,
+        limit,
+    )
 
     board_column, moves_column = st.columns([1.18, 1.0])
     with board_column:

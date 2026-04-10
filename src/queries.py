@@ -482,36 +482,108 @@ def load_move_summary_by_position(
 def load_games_by_position(
     connection: sqlite3.Connection,
     fen: str,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+    usernames: str = "peletis",
     limit: int = 200,
 ) -> pd.DataFrame:
     position_key = normalize_fen(fen)
-    query = """
+    aliases = normalize_aliases(usernames)
+    params: dict[str, object] = {"position_key": position_key, "limit": limit}
+    clauses = ["p.position_key = :position_key"]
+
+    if player.strip():
+        resolved = resolve_player_aliases(player)
+        if resolved["expanded"]:
+            placeholders: list[str] = []
+            for index, search_name in enumerate(resolved["search_names"]):
+                key = f"position_player_alias_{index}"
+                params[key] = search_name
+                placeholders.append(f":{key}")
+            alias_sql = ", ".join(placeholders)
+            clauses.append(f"(g.white_norm IN ({alias_sql}) OR g.black_norm IN ({alias_sql}))")
+        else:
+            params["player"] = f"%{player.strip()}%"
+            clauses.append("(g.white LIKE :player OR g.black LIKE :player)")
+
+    if result != "Any":
+        clauses.append("g.result = :result")
+        params["result"] = result
+
+    if eco_prefix.strip():
+        clauses.append("g.eco LIKE :eco_prefix")
+        params["eco_prefix"] = f"{eco_prefix.strip()}%"
+
+    if color == "White" and aliases:
+        clauses.append(_build_alias_match_clause("g.white_norm", aliases, params, "position_games_white_alias"))
+    elif color == "Black" and aliases:
+        clauses.append(_build_alias_match_clause("g.black_norm", aliases, params, "position_games_black_alias"))
+
+    where_sql = " AND ".join(clauses)
+
+    query = f"""
+        WITH matched_games AS (
+            SELECT
+                g.id,
+                g.game_number,
+                MIN(p.ply) AS ply,
+                g.source_line,
+                g.date,
+                g.white,
+                g.black,
+                g.result,
+                g.eco,
+                g.white_elo,
+                g.black_elo,
+                g.event,
+                g.site,
+                g.date_sort_key,
+                g.date_precision
+            FROM positions p
+            INNER JOIN games g ON g.id = p.game_id
+            WHERE {where_sql}
+            GROUP BY
+                g.id,
+                g.game_number,
+                g.source_line,
+                g.date,
+                g.white,
+                g.black,
+                g.result,
+                g.eco,
+                g.white_elo,
+                g.black_elo,
+                g.event,
+                g.site,
+                g.date_sort_key,
+                g.date_precision
+        )
         SELECT
-            g.id,
-            g.game_number,
-            p.ply,
-            g.source_line,
-            g.date,
-            g.white,
-            g.black,
-            g.result,
-            g.eco,
-            g.white_elo,
-            g.black_elo,
-            g.event,
-            g.site
-        FROM positions p
-        INNER JOIN games g ON g.id = p.game_id
-        WHERE p.position_key = :position_key
+            id,
+            game_number,
+            ply,
+            source_line,
+            date,
+            white,
+            black,
+            result,
+            eco,
+            white_elo,
+            black_elo,
+            event,
+            site
+        FROM matched_games
         ORDER BY
-            CASE WHEN g.date_sort_key = 0 THEN 1 ELSE 0 END ASC,
-            g.date_sort_key DESC,
-            g.date_precision ASC,
-            g.game_number DESC,
-            p.ply ASC
+            CASE WHEN date_sort_key = 0 THEN 1 ELSE 0 END ASC,
+            date_sort_key DESC,
+            date_precision ASC,
+            game_number DESC,
+            ply ASC
         LIMIT :limit
     """
-    return pd.read_sql_query(query, connection, params={"position_key": position_key, "limit": limit})
+    return pd.read_sql_query(query, connection, params=params)
 
 
 def load_next_moves_by_position(

@@ -42,16 +42,18 @@ Start the app:
 streamlit run app.py
 ```
 
-The app currently has two pages:
+The app currently has three pages:
 
 - `Opening explorer`: explore openings, filter games, and drill into positions move by move
+- `Position explorer`: direct FEN lookup and validation page while position-based exploration is being folded into the main explorer
 - `Data review`: review games with targeted cleanup queues
 
 The `Opening explorer` currently includes:
 
 - a board for the current position
 - a narrow control strip with rotate, back, and reset actions
-- a move breakdown panel beside the board
+- a position-based move breakdown panel beside the board
+- a position-based matching-games list under the board row
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
 
 ## Cleanup workflow
