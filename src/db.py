@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS positions (
 """
 
 
+CREATE_OPENING_POSITIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS opening_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_key TEXT NOT NULL,
+    eco TEXT NOT NULL,
+    name TEXT NOT NULL,
+    pgn TEXT NOT NULL,
+    uci TEXT NOT NULL
+);
+"""
+
+
 INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_games_game_number ON games (game_number)",
     "CREATE INDEX IF NOT EXISTS idx_games_source_line ON games (source_line)",
@@ -64,6 +76,8 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_games_moves_san ON games (moves_san)",
     "CREATE INDEX IF NOT EXISTS idx_positions_position_key ON positions (position_key)",
     "CREATE INDEX IF NOT EXISTS idx_positions_game_ply ON positions (game_id, ply)",
+    "CREATE INDEX IF NOT EXISTS idx_opening_positions_position_key ON opening_positions (position_key)",
+    "CREATE INDEX IF NOT EXISTS idx_opening_positions_eco ON opening_positions (eco)",
 ]
 
 
@@ -141,6 +155,7 @@ def database_has_required_schema(connection: sqlite3.Connection) -> bool:
 def initialize_database(connection: sqlite3.Connection) -> None:
     connection.execute(CREATE_TABLE_SQL)
     connection.execute(CREATE_POSITIONS_TABLE_SQL)
+    connection.execute(CREATE_OPENING_POSITIONS_TABLE_SQL)
     if not database_has_required_schema(connection):
         connection.commit()
         return
@@ -257,3 +272,22 @@ def replace_games(
 
     connection.commit()
     return (total_games, total_positions)
+
+
+def replace_opening_positions(connection: sqlite3.Connection, opening_rows: list[dict[str, str]]) -> int:
+    connection.executescript(
+        """
+        DELETE FROM opening_positions;
+        DELETE FROM sqlite_sequence WHERE name = 'opening_positions';
+        """
+    )
+    if opening_rows:
+        connection.executemany(
+            """
+            INSERT INTO opening_positions (position_key, eco, name, pgn, uci)
+            VALUES (:position_key, :eco, :name, :pgn, :uci)
+            """,
+            opening_rows,
+        )
+    connection.commit()
+    return len(opening_rows)

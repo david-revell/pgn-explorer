@@ -602,3 +602,38 @@ def load_next_moves_by_position(
         ORDER BY games DESC, move ASC
     """
     return pd.read_sql_query(query, connection, params={"position_key": position_key})
+
+
+def load_opening_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+) -> sqlite3.Row | None:
+    position_key = normalize_fen(fen)
+    return connection.execute(
+        """
+        SELECT eco, name, pgn, uci, position_key
+        FROM opening_positions
+        WHERE position_key = ?
+        LIMIT 1
+        """,
+        (position_key,),
+    ).fetchone()
+
+
+def load_openings_by_position_keys(
+    connection: sqlite3.Connection,
+    position_keys: list[str],
+) -> dict[str, sqlite3.Row]:
+    if not position_keys:
+        return {}
+
+    placeholders = ", ".join("?" for _ in position_keys)
+    rows = connection.execute(
+        f"""
+        SELECT position_key, eco, name, pgn, uci
+        FROM opening_positions
+        WHERE position_key IN ({placeholders})
+        """,
+        position_keys,
+    ).fetchall()
+    return {str(row["position_key"]): row for row in rows}

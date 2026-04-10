@@ -15,3 +15,12 @@ def build_position_key(board: chess.Board) -> str:
 
 def normalize_fen(fen: str) -> str:
     return build_position_key(chess.Board(fen))
+
+
+def build_position_history(move_sequence: tuple[str, ...]) -> list[str]:
+    board = chess.Board()
+    history = [build_position_key(board)]
+    for san_move in move_sequence:
+        board.push(board.parse_san(san_move))
+        history.append(build_position_key(board))
+    return history

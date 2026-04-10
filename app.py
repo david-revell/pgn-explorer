@@ -20,10 +20,13 @@ from src.queries import (
     load_move_summary_by_position,
     load_move_summary,
     load_next_moves_by_position,
+    load_opening_by_position,
+    load_openings_by_position_keys,
     load_pgn_export,
     load_player_summary,
     load_quality_counts,
 )
+from src.positions import build_position_history
 from src.viewer import (
     build_board_from_san_sequence,
     format_position_label,
@@ -177,6 +180,46 @@ def _load_next_moves_by_position_cached(
 ) -> pd.DataFrame:
     with get_connection(DEFAULT_DB_PATH) as connection:
         return load_next_moves_by_position(connection, fen)
+
+
+@st.cache_data(show_spinner=False)
+def _load_opening_by_position_cached(
+    _db_version: int,
+    fen: str,
+) -> dict[str, str] | None:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        row = load_opening_by_position(connection, fen)
+    if row is None:
+        return None
+    return {
+        "eco": str(row["eco"]),
+        "name": str(row["name"]),
+        "pgn": str(row["pgn"]),
+        "uci": str(row["uci"]),
+        "position_key": str(row["position_key"]),
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _load_latest_opening_for_move_sequence_cached(
+    _db_version: int,
+    move_sequence: tuple[str, ...],
+) -> dict[str, str] | None:
+    position_history = build_position_history(move_sequence)
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        opening_map = load_openings_by_position_keys(connection, position_history)
+
+    for position_key in reversed(position_history):
+        row = opening_map.get(position_key)
+        if row is not None:
+            return {
+                "eco": str(row["eco"]),
+                "name": str(row["name"]),
+                "pgn": str(row["pgn"]),
+                "uci": str(row["uci"]),
+                "position_key": str(row["position_key"]),
+            }
+    return None
 
 
 def _get_pending_eco_updates() -> dict[int, str]:
@@ -417,6 +460,13 @@ def render_opening_explorer(connection) -> None:
             current_fen = board.fen()
             render_board(board, last_move=last_move, size=520)
 
+    if current_fen:
+        opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
+        if opening is None:
+            st.caption("Opening: no named position match yet.")
+        else:
+            st.caption(f"Opening: {opening['eco']} {opening['name']}")
+
     with controls_column:
         st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
         if st.button("↻", key="rotate_opening_board", help="Rotate board", use_container_width=True):
@@ -580,6 +630,11 @@ def render_position_explorer(connection) -> None:
     board_column, moves_column = st.columns([1.18, 1.0])
     with board_column:
         render_board(board, size=520)
+        opening = _load_opening_by_position_cached(db_version, fen_text)
+        if opening is None:
+            st.caption("Opening: no named position match yet.")
+        else:
+            st.caption(f"Opening: {opening['eco']} {opening['name']}")
     with moves_column:
         st.subheader("Next moves")
         if next_moves_df.empty:

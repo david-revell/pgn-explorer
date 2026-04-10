@@ -56,6 +56,28 @@ The `Opening explorer` currently includes:
 - a position-based matching-games list under the board row
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
 
+## Opening reference data
+
+Opening-name lookup is built from the Lichess opening dataset:
+
+- repository: `https://github.com/lichess-org/chess-openings`
+- source files: `a.tsv` to `e.tsv`
+
+Those source TSVs contain `eco`, `name`, and `pgn`. This project then:
+
+1. Parses each PGN line
+2. Computes the final opening position as a simplified FEN-style key
+3. Stores that key in the `opening_positions` table in `data/games.db`
+
+This lets the app identify openings by position, which is important for transpositions.
+
+Local commands:
+
+```powershell
+python internal\build_openings_tsv.py --output internal\openings.tsv
+python internal\import_openings.py --input internal\openings.tsv
+```
+
 ## Cleanup workflow
 
 The app is designed around source-first cleanup. If a game is bad, fix or delete it in `pgn/all.pgn`, then rerun the importer.
