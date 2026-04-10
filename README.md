@@ -51,6 +51,7 @@ The app currently has three pages:
 The `Opening explorer` currently includes:
 
 - a board for the current position
+- an opening label showing `ECO + name`, with the reference opening PGN line directly underneath
 - a narrow control strip with rotate, back, and reset actions
 - a position-based move breakdown panel beside the board
 - a position-based matching-games list under the board row

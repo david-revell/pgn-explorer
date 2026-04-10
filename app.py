@@ -222,6 +222,17 @@ def _load_latest_opening_for_move_sequence_cached(
     return None
 
 
+def _render_opening_label(opening: dict[str, str] | None) -> None:
+    if opening is None:
+        st.caption("No named position match yet.")
+        return
+
+    opening_text = f"{opening['eco']} {opening['name']}"
+    if opening["pgn"].strip():
+        opening_text = f"{opening_text}<br>{opening['pgn'].strip()}"
+    st.caption(opening_text, unsafe_allow_html=True)
+
+
 def _get_pending_eco_updates() -> dict[int, str]:
     pending = st.session_state.get("pending_eco_updates")
     if pending is None:
@@ -462,10 +473,7 @@ def render_opening_explorer(connection) -> None:
 
     if current_fen:
         opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
-        if opening is None:
-            st.caption("Opening: no named position match yet.")
-        else:
-            st.caption(f"Opening: {opening['eco']} {opening['name']}")
+        _render_opening_label(opening)
 
     with controls_column:
         st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
@@ -504,10 +512,10 @@ def render_opening_explorer(connection) -> None:
                 show_move_prefix=False,
             )
     entered_move_text = st.text_input(
-        "Moves",
+        "Current line",
         value=st.session_state.get("opening_move_text", current_move_text),
         key="opening_move_text",
-        label_visibility="collapsed",
+        label_visibility="visible",
         placeholder="Enter moves and press Enter",
     )
     if move_text_error:
@@ -631,10 +639,7 @@ def render_position_explorer(connection) -> None:
     with board_column:
         render_board(board, size=520)
         opening = _load_opening_by_position_cached(db_version, fen_text)
-        if opening is None:
-            st.caption("Opening: no named position match yet.")
-        else:
-            st.caption(f"Opening: {opening['eco']} {opening['name']}")
+        _render_opening_label(opening)
     with moves_column:
         st.subheader("Next moves")
         if next_moves_df.empty:
