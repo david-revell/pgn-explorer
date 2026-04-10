@@ -33,6 +33,91 @@ from src.viewer import (
 PLAYER_USERNAMES = "peletis"
 
 
+def _get_db_version_token() -> int:
+    try:
+        return DEFAULT_DB_PATH.stat().st_mtime_ns
+    except FileNotFoundError:
+        return 0
+
+
+@st.cache_data(show_spinner=False)
+def _load_quality_counts_cached(_db_version: int, usernames: str) -> dict[str, int]:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_quality_counts(connection, usernames)
+
+
+@st.cache_data(show_spinner=False)
+def _load_player_summary_cached(
+    _db_version: int,
+    usernames: str,
+    move_sequence: tuple[str, ...],
+    position_label: str,
+    player: str,
+    color: str,
+    result: str,
+    eco_prefix: str,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_player_summary(
+            connection=connection,
+            usernames=usernames,
+            move_sequence=move_sequence,
+            position_label=position_label,
+            player=player,
+            color=color,
+            result=result,
+            eco_prefix=eco_prefix,
+        )
+
+
+@st.cache_data(show_spinner=False)
+def _load_move_summary_cached(
+    _db_version: int,
+    usernames: str,
+    side: str,
+    move_sequence: tuple[str, ...],
+    player: str,
+    color: str,
+    result: str,
+    eco_prefix: str,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_move_summary(
+            connection=connection,
+            usernames=usernames,
+            side=side,
+            move_sequence=move_sequence,
+            player=player,
+            color=color,
+            result=result,
+            eco_prefix=eco_prefix,
+        )
+
+
+@st.cache_data(show_spinner=False)
+def _load_games_cached(
+    _db_version: int,
+    move_sequence: tuple[str, ...],
+    player: str,
+    color: str,
+    result: str,
+    eco_prefix: str,
+    usernames: str,
+    limit: int,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_games(
+            connection=connection,
+            move_sequence=move_sequence,
+            player=player,
+            color=color,
+            result=result,
+            eco_prefix=eco_prefix,
+            usernames=usernames,
+            limit=limit,
+        )
+
+
 def _get_pending_eco_updates() -> dict[int, str]:
     pending = st.session_state.get("pending_eco_updates")
     if pending is None:
@@ -217,9 +302,22 @@ def render_opening_explorer(connection) -> None:
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
 
     move_sequence = tuple(st.session_state["move_sequence"])
-    position_label = format_position_label(move_sequence)
     current_move_text = _sync_opening_move_text(move_sequence)
-    critical_counts = load_quality_counts(connection, PLAYER_USERNAMES)
+
+    entered_move_text = st.session_state.get("opening_move_text", current_move_text)
+    move_text_error = ""
+    if entered_move_text != current_move_text:
+        try:
+            move_sequence = parse_move_text(entered_move_text)
+        except ValueError as exc:
+            move_text_error = str(exc)
+        else:
+            st.session_state["move_sequence"] = list(move_sequence)
+            st.session_state["opening_move_text_synced_sequence"] = move_sequence
+
+    db_version = _get_db_version_token()
+    position_label = format_position_label(move_sequence)
+    critical_counts = _load_quality_counts_cached(db_version, PLAYER_USERNAMES)
     active_critical = {label: value for label, value in critical_counts.items() if value > 0}
     resolved_player_aliases = resolve_player_aliases(player)
 
@@ -232,15 +330,15 @@ def render_opening_explorer(connection) -> None:
         st.info(f"Player aliases: {resolved_player_aliases['canonical_name']} -> {alias_text}")
 
     render_player_summary(
-        load_player_summary(
-            connection=connection,
-            usernames=PLAYER_USERNAMES,
-            move_sequence=move_sequence,
-            position_label=position_label,
-            player=player,
-            color=color,
-            result=result,
-            eco_prefix=eco_prefix,
+        _load_player_summary_cached(
+            db_version,
+            PLAYER_USERNAMES,
+            move_sequence,
+            position_label,
+            player,
+            color,
+            result,
+            eco_prefix,
         )
     )
     st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
@@ -273,15 +371,15 @@ def render_opening_explorer(connection) -> None:
     with moves_column:
         with st.container(height=540):
             selected_move = render_clickable_move_summary(
-                load_move_summary(
-                    connection=connection,
-                    usernames=PLAYER_USERNAMES,
-                    side=move_side,
-                    move_sequence=move_sequence,
-                    player=player,
-                    color=color,
-                    result=result,
-                    eco_prefix=eco_prefix,
+                _load_move_summary_cached(
+                    db_version,
+                    PLAYER_USERNAMES,
+                    move_side,
+                    move_sequence,
+                    player,
+                    color,
+                    result,
+                    eco_prefix,
                 ),
                 ply_index=len(move_sequence),
                 key_prefix=f"move_{'__'.join(move_sequence) or 'start'}_{color}_{player}_{result}_{eco_prefix}",
@@ -294,27 +392,21 @@ def render_opening_explorer(connection) -> None:
         label_visibility="collapsed",
         placeholder="Enter moves and press Enter",
     )
-    if entered_move_text != current_move_text:
-        try:
-            st.session_state["move_sequence"] = list(parse_move_text(entered_move_text))
-        except ValueError as exc:
-            st.warning(str(exc))
-        else:
-            st.session_state["opening_move_text_synced_sequence"] = tuple(st.session_state["move_sequence"])
-            st.rerun()
+    if move_text_error:
+        st.warning(move_text_error)
     if selected_move is not None:
-        st.session_state["move_sequence"] = [*st.session_state["move_sequence"], selected_move]
+        st.session_state["move_sequence"] = [*move_sequence, selected_move]
         st.rerun()
 
-    games_df = load_games(
-        connection=connection,
-        move_sequence=move_sequence,
-        player=player,
-        color=color,
-        result=result,
-        eco_prefix=eco_prefix,
-        usernames=PLAYER_USERNAMES,
-        limit=limit,
+    games_df = _load_games_cached(
+        db_version,
+        move_sequence,
+        player,
+        color,
+        result,
+        eco_prefix,
+        PLAYER_USERNAMES,
+        limit,
     )
 
     st.subheader("Recent games")

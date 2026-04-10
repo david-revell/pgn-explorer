@@ -9,6 +9,10 @@ from collections.abc import Callable
 import chess.pgn
 
 
+def _normalize_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
 def _parse_int(value: str | None) -> int | None:
     if value is None:
         return None
@@ -54,6 +58,32 @@ def count_games_in_pgn(pgn_path: Path | str) -> int:
     return count
 
 
+def _date_sort_fields(value: str | None) -> tuple[int, int]:
+    cleaned = (value or "").strip()
+    if not cleaned or cleaned == "????.??.??":
+        return (0, 99)
+
+    year = cleaned[0:4]
+    month = cleaned[5:7]
+    day = cleaned[8:10]
+
+    safe_year = year if year.isdigit() else "0000"
+    safe_month = "01" if month == "??" else month
+    safe_day = "01" if day == "??" else day
+
+    if month == "??":
+        precision = 1
+    elif day == "??":
+        precision = 2
+    else:
+        precision = 3
+
+    try:
+        return (int(f"{safe_year}{safe_month}{safe_day}"), precision)
+    except ValueError:
+        return (0, 99)
+
+
 def parse_pgn_file(
     pgn_path: Path | str,
     progress_every: int = 500,
@@ -79,6 +109,7 @@ def parse_pgn_file(
             board.push(move)
 
         headers = game.headers
+        date_sort_key, date_precision = _date_sort_fields(headers.get("Date"))
         games.append(
             {
                 "game_number": game_number,
@@ -98,6 +129,10 @@ def parse_pgn_file(
                 "event_date": headers.get("EventDate"),
                 "termination": headers.get("Termination"),
                 "time_control": headers.get("TimeControl"),
+                "white_norm": _normalize_text(headers.get("White")),
+                "black_norm": _normalize_text(headers.get("Black")),
+                "date_sort_key": date_sort_key,
+                "date_precision": date_precision,
                 "moves_san": " ".join(san_moves),
                 "pgn_text": pgn_text,
             }

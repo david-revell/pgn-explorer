@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS games (
     event_date TEXT,
     termination TEXT,
     time_control TEXT,
+    white_norm TEXT NOT NULL,
+    black_norm TEXT NOT NULL,
+    date_sort_key INTEGER NOT NULL,
+    date_precision INTEGER NOT NULL,
     moves_san TEXT NOT NULL,
     pgn_text TEXT NOT NULL
 );
@@ -38,9 +42,13 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_games_source_line ON games (source_line)",
     "CREATE INDEX IF NOT EXISTS idx_games_white ON games (white)",
     "CREATE INDEX IF NOT EXISTS idx_games_black ON games (black)",
+    "CREATE INDEX IF NOT EXISTS idx_games_white_norm ON games (white_norm)",
+    "CREATE INDEX IF NOT EXISTS idx_games_black_norm ON games (black_norm)",
     "CREATE INDEX IF NOT EXISTS idx_games_result ON games (result)",
     "CREATE INDEX IF NOT EXISTS idx_games_eco ON games (eco)",
     "CREATE INDEX IF NOT EXISTS idx_games_date ON games (date)",
+    "CREATE INDEX IF NOT EXISTS idx_games_date_sort ON games (date_sort_key DESC, date_precision ASC, game_number DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_games_moves_san ON games (moves_san)",
 ]
 
 
@@ -63,6 +71,10 @@ REQUIRED_COLUMNS = {
     "event_date",
     "termination",
     "time_control",
+    "white_norm",
+    "black_norm",
+    "date_sort_key",
+    "date_precision",
     "moves_san",
     "pgn_text",
 }
@@ -118,12 +130,12 @@ def replace_games(connection: sqlite3.Connection, games: list[dict]) -> None:
         INSERT INTO games (
             game_number, source_line, source_file, event, site, date, round, white, black, result, eco,
             white_elo, black_elo, ply_count, event_date, termination, time_control,
-            moves_san, pgn_text
+            white_norm, black_norm, date_sort_key, date_precision, moves_san, pgn_text
         )
         VALUES (
             :game_number, :source_line, :source_file, :event, :site, :date, :round, :white, :black, :result, :eco,
             :white_elo, :black_elo, :ply_count, :event_date, :termination, :time_control,
-            :moves_san, :pgn_text
+            :white_norm, :black_norm, :date_sort_key, :date_precision, :moves_san, :pgn_text
         )
         """,
         games,

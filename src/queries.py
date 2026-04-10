@@ -28,7 +28,7 @@ def _build_alias_match_clause(
         placeholders.append(f":{key}")
 
     alias_sql = ", ".join(placeholders)
-    return f"LOWER(TRIM(COALESCE({field_name}, ''))) IN ({alias_sql})"
+    return f"{field_name} IN ({alias_sql})"
 
 
 def _append_not_my_game_clause(
@@ -62,8 +62,8 @@ def _append_player_clause(
 
         alias_sql = ", ".join(placeholders)
         clauses.append(
-            f"(LOWER(TRIM(COALESCE(white, ''))) IN ({alias_sql}) "
-            f"OR LOWER(TRIM(COALESCE(black, ''))) IN ({alias_sql}))"
+            f"(white_norm IN ({alias_sql}) "
+            f"OR black_norm IN ({alias_sql}))"
         )
         return
 
@@ -89,9 +89,12 @@ def _append_shared_game_filters(
 
     if move_sequence:
         move_text = " ".join(move_sequence)
-        clauses.append("(TRIM(moves_san) = :move_text OR TRIM(moves_san) LIKE :move_prefix)")
+        clauses.append(
+            "(moves_san = :move_text OR (moves_san >= :move_prefix_start AND moves_san < :move_prefix_end))"
+        )
         params["move_text"] = move_text
-        params["move_prefix"] = f"{move_text} %"
+        params["move_prefix_start"] = f"{move_text} "
+        params["move_prefix_end"] = f"{move_text} \uffff"
 
     if player.strip():
         _append_player_clause(clauses, params, player)
@@ -107,7 +110,7 @@ def _append_shared_game_filters(
     if quality_filter == "Missing result":
         clauses.append("(result IS NULL OR TRIM(result) = '' OR result = '*')")
     elif quality_filter == "Missing moves":
-        clauses.append("(moves_san IS NULL OR TRIM(moves_san) = '')")
+        clauses.append("(moves_san IS NULL OR moves_san = '')")
     elif quality_filter == "Not my game":
         _append_not_my_game_clause(clauses, params, aliases)
 
@@ -147,9 +150,9 @@ def load_games(
     )
 
     if color == "White" and aliases:
-        clauses.append(_build_alias_match_clause("white", aliases, params, "games_white_alias"))
+        clauses.append(_build_alias_match_clause("white_norm", aliases, params, "games_white_alias"))
     elif color == "Black" and aliases:
-        clauses.append(_build_alias_match_clause("black", aliases, params, "games_black_alias"))
+        clauses.append(_build_alias_match_clause("black_norm", aliases, params, "games_black_alias"))
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -160,25 +163,9 @@ def load_games(
         FROM games
         {where_sql}
         ORDER BY
-            CASE
-                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 1
-                ELSE 0
-            END ASC,
-            CASE
-                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 0
-                ELSE CAST(
-                    SUBSTR(date, 1, 4) ||
-                    CASE WHEN SUBSTR(date, 6, 2) = '??' THEN '01' ELSE SUBSTR(date, 6, 2) END ||
-                    CASE WHEN SUBSTR(date, 9, 2) = '??' THEN '01' ELSE SUBSTR(date, 9, 2) END
-                    AS INTEGER
-                )
-            END DESC,
-            CASE
-                WHEN date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??' THEN 99
-                WHEN SUBSTR(date, 6, 2) = '??' THEN 1
-                WHEN SUBSTR(date, 9, 2) = '??' THEN 2
-                ELSE 3
-            END ASC,
+            CASE WHEN date_sort_key = 0 THEN 1 ELSE 0 END ASC,
+            date_sort_key DESC,
+            date_precision ASC,
             game_number DESC
         LIMIT :limit
     """
@@ -235,7 +222,7 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
             """
             SELECT COUNT(*)
             FROM games
-            WHERE moves_san IS NULL OR TRIM(moves_san) = ''
+            WHERE moves_san IS NULL OR moves_san = ''
             """
         ).fetchone()[0],
         "Not my game": connection.execute(
@@ -317,8 +304,8 @@ def _build_stats_where_clause(
 
     params: dict[str, object] = {}
     clauses: list[str] = []
-    white_match = _build_alias_match_clause("white", aliases, params, f"{prefix}_white_alias")
-    black_match = _build_alias_match_clause("black", aliases, params, f"{prefix}_black_alias")
+    white_match = _build_alias_match_clause("white_norm", aliases, params, f"{prefix}_white_alias")
+    black_match = _build_alias_match_clause("black_norm", aliases, params, f"{prefix}_black_alias")
 
     _append_shared_game_filters(
         clauses=clauses,
@@ -423,7 +410,7 @@ def load_move_summary(
             moves_san,
             result
         FROM games
-        {where_sql} AND moves_san IS NOT NULL AND TRIM(moves_san) <> ''
+        {where_sql} AND moves_san IS NOT NULL AND moves_san <> ''
     """
     games_df = pd.read_sql_query(query, connection, params=params)
     if games_df.empty:

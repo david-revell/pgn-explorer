@@ -41,6 +41,7 @@ def _inject_breakdown_styles() -> None:
             font-weight: 600;
             color: #38463a;
             margin-bottom: 0.2rem;
+            white-space: nowrap;
         }
         .breakdown-header--right {
             text-align: right;
@@ -93,6 +94,9 @@ def _inject_breakdown_styles() -> None:
         }
         .breakdown-row {
             margin-bottom: 0.32rem;
+        }
+        div.stButton > button[kind="secondary"] {
+            white-space: nowrap;
         }
         </style>
         """,
@@ -180,20 +184,20 @@ def render_player_summary(summary_df: pd.DataFrame) -> None:
 def render_move_summary(moves_df: pd.DataFrame) -> None:
     if moves_df.empty:
         _inject_breakdown_styles()
-        headers = st.columns([0.9, 0.9, 5.2])
+        headers = st.columns([1.2, 0.8, 5.0])
         headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
         headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
         headers[2].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
         return
 
     _inject_breakdown_styles()
-    headers = st.columns([0.9, 0.9, 5.2])
+    headers = st.columns([1.2, 0.8, 5.0])
     headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
     headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
     headers[2].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
 
     for row in moves_df.itertuples(index=False):
-        columns = st.columns([0.9, 0.9, 5.2])
+        columns = st.columns([1.2, 0.8, 5.0])
         columns[0].markdown(f"<div class='breakdown-text'>{row.move}</div>", unsafe_allow_html=True)
         columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
         columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
@@ -210,13 +214,13 @@ def render_clickable_move_summary(
         return None
 
     _inject_breakdown_styles()
-    headers = st.columns([0.9, 0.9, 5.2])
+    headers = st.columns([1.2, 0.8, 5.0])
     headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
     headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
     headers[2].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
 
     for row in moves_df.itertuples(index=False):
-        columns = st.columns([0.9, 0.9, 5.2])
+        columns = st.columns([1.2, 0.8, 5.0])
         move_label = format_move_label(row.move, ply_index) if show_move_prefix else str(row.move)
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
