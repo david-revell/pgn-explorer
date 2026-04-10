@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import chess
 import pandas as pd
 import streamlit as st
 
@@ -15,7 +16,10 @@ from src.queries import (
     load_data_review_games,
     load_game_by_id,
     load_games,
+    load_games_by_position,
+    load_move_summary_by_position,
     load_move_summary,
+    load_next_moves_by_position,
     load_pgn_export,
     load_player_summary,
     load_quality_counts,
@@ -95,6 +99,30 @@ def _load_move_summary_cached(
 
 
 @st.cache_data(show_spinner=False)
+def _load_move_summary_by_position_cached(
+    _db_version: int,
+    fen: str,
+    usernames: str,
+    side: str,
+    player: str,
+    color: str,
+    result: str,
+    eco_prefix: str,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_move_summary_by_position(
+            connection=connection,
+            fen=fen,
+            usernames=usernames,
+            side=side,
+            player=player,
+            color=color,
+            result=result,
+            eco_prefix=eco_prefix,
+        )
+
+
+@st.cache_data(show_spinner=False)
 def _load_games_cached(
     _db_version: int,
     move_sequence: tuple[str, ...],
@@ -116,6 +144,25 @@ def _load_games_cached(
             usernames=usernames,
             limit=limit,
         )
+
+
+@st.cache_data(show_spinner=False)
+def _load_games_by_position_cached(
+    _db_version: int,
+    fen: str,
+    limit: int,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_games_by_position(connection, fen, limit=limit)
+
+
+@st.cache_data(show_spinner=False)
+def _load_next_moves_by_position_cached(
+    _db_version: int,
+    fen: str,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_next_moves_by_position(connection, fen)
 
 
 def _get_pending_eco_updates() -> dict[int, str]:
@@ -345,6 +392,7 @@ def render_opening_explorer(connection) -> None:
 
     move_side = "total" if color == "Any" else color.lower()
     board_column, left_gap_column, controls_column, right_gap_column, moves_column = st.columns([1.28, 0.08, 0.22, 0.08, 1.0])
+    current_fen = ""
 
     with board_column:
         try:
@@ -352,6 +400,7 @@ def render_opening_explorer(connection) -> None:
         except ValueError as exc:
             st.warning(f"Could not render board for the current move path: {exc}")
         else:
+            current_fen = board.fen()
             render_board(board, last_move=last_move, size=520)
 
     with controls_column:
@@ -370,19 +419,24 @@ def render_opening_explorer(connection) -> None:
 
     with moves_column:
         with st.container(height=540):
-            selected_move = render_clickable_move_summary(
-                _load_move_summary_cached(
+            if current_fen:
+                move_summary_df = _load_move_summary_by_position_cached(
                     db_version,
+                    current_fen,
                     PLAYER_USERNAMES,
                     move_side,
-                    move_sequence,
                     player,
                     color,
                     result,
                     eco_prefix,
-                ),
+                )
+            else:
+                move_summary_df = pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
+
+            selected_move = render_clickable_move_summary(
+                move_summary_df,
                 ply_index=len(move_sequence),
-                key_prefix=f"move_{'__'.join(move_sequence) or 'start'}_{color}_{player}_{result}_{eco_prefix}",
+                key_prefix=f"position_move_{len(move_sequence)}_{color}_{player}_{result}_{eco_prefix}",
                 show_move_prefix=False,
             )
     entered_move_text = st.text_input(
@@ -446,6 +500,49 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
 
     if selected_game is not None:
         render_game_summary(dict(selected_game))
+
+
+def render_position_explorer(connection) -> None:
+    default_fen = st.session_state.get("position_explorer_fen", chess.STARTING_FEN)
+
+    with st.sidebar:
+        st.header("Position explorer")
+        limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25, key="position_limit")
+
+    fen_text = st.text_area(
+        "FEN",
+        value=default_fen,
+        key="position_explorer_fen",
+        height=80,
+        placeholder="Paste a FEN here",
+    ).strip()
+
+    if not fen_text:
+        st.info("Paste a FEN to explore the stored positions table.")
+        return
+
+    try:
+        board = chess.Board(fen_text)
+    except ValueError as exc:
+        st.warning(f"Invalid FEN: {exc}")
+        return
+
+    db_version = _get_db_version_token()
+    next_moves_df = _load_next_moves_by_position_cached(db_version, fen_text)
+    games_df = _load_games_by_position_cached(db_version, fen_text, limit)
+
+    board_column, moves_column = st.columns([1.18, 1.0])
+    with board_column:
+        render_board(board, size=520)
+    with moves_column:
+        st.subheader("Next moves")
+        if next_moves_df.empty:
+            st.info("No stored next moves for this position.")
+        else:
+            st.dataframe(next_moves_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Matching games")
+    render_game_list_and_detail(connection, games_df)
 
 
 def render_data_review(connection) -> None:
@@ -524,9 +621,14 @@ def main() -> None:
         st.session_state["board_orientation"] = "White"
 
     with st.sidebar:
-        page = st.radio("Page", ["Opening explorer", "Data review"])
+        page = st.radio("Page", ["Opening explorer", "Position explorer", "Data review"])
 
-    st.title("Opening Explorer" if page == "Opening explorer" else "Data review")
+    title = {
+        "Opening explorer": "Opening Explorer",
+        "Position explorer": "Position Explorer",
+        "Data review": "Data review",
+    }[page]
+    st.title(title)
 
     db_path = Path("data/games.db")
     db_exists = db_path.exists()
@@ -546,6 +648,8 @@ def main() -> None:
 
         if page == "Opening explorer":
             render_opening_explorer(connection)
+        elif page == "Position explorer":
+            render_position_explorer(connection)
         else:
             render_data_review(connection)
 

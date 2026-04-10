@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 
 from src.db import DEFAULT_DB_PATH, get_connection, replace_games
-from src.parser import parse_pgn_file
+from src.parser import count_games_in_pgn, iter_parsed_games
 
 
 DEFAULT_PGN_PATH = Path("pgn/all.pgn")
@@ -45,6 +45,7 @@ def import_archive(
     started = perf_counter()
     print(f"Reading games from {pgn_path} ...")
     print("The import rebuilds the database from this PGN file.")
+    total_games = count_games_in_pgn(pgn_path)
 
     def handle_progress(parsed_games: int, total_games: int | None, elapsed_seconds: float) -> None:
         report_progress(parsed_games, total_games, elapsed_seconds)
@@ -53,19 +54,20 @@ def import_archive(
 
     if status_callback is not None:
         status_callback("Parsing PGN...")
-    games = parse_pgn_file(pgn_path, progress_callback=handle_progress)
-    print(f"Parsed {len(games)} games in {perf_counter() - started:.1f}s.")
 
     with get_connection(db_path) as connection:
+        parsed_games = iter_parsed_games(pgn_path, progress_callback=handle_progress)
         if status_callback is not None:
-            status_callback(f"Writing {len(games)} games to the database...")
-        print(f"Writing {len(games)} games to {db_path} ...")
-        replace_games(connection, games)
+            status_callback(f"Writing {total_games} games to the database...")
+        print(f"Writing {total_games} games to {db_path} ...")
+        imported_games, imported_positions = replace_games(connection, parsed_games)
 
     if status_callback is not None:
-        status_callback(f"Finished rebuild with {len(games)} games.")
-    print(f"Wrote database to {db_path} in {perf_counter() - started:.1f}s.")
-    return len(games)
+        status_callback(
+            f"Finished rebuild with {imported_games} games and {imported_positions} stored positions."
+        )
+    print(f"Wrote {imported_games} games and {imported_positions} positions to {db_path} in {perf_counter() - started:.1f}s.")
+    return imported_games
 
 
 def main() -> None:

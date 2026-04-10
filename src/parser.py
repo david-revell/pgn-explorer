@@ -8,6 +8,8 @@ from collections.abc import Callable
 
 import chess.pgn
 
+from src.positions import build_position_key
+
 
 def _normalize_text(value: str | None) -> str:
     return (value or "").strip().lower()
@@ -89,8 +91,22 @@ def parse_pgn_file(
     progress_every: int = 500,
     progress_callback: Callable[[int, int | None, float], None] | None = None,
 ) -> list[dict]:
+    return [
+        game_row
+        for game_row, _ in iter_parsed_games(
+            pgn_path,
+            progress_every=progress_every,
+            progress_callback=progress_callback,
+        )
+    ]
+
+
+def iter_parsed_games(
+    pgn_path: Path | str,
+    progress_every: int = 500,
+    progress_callback: Callable[[int, int | None, float], None] | None = None,
+) -> tuple[dict, list[dict]]:
     path = Path(pgn_path)
-    games: list[dict] = []
     total_games = count_games_in_pgn(path)
     started = perf_counter()
 
@@ -101,16 +117,33 @@ def parse_pgn_file(
 
         exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
         pgn_text = game.accept(exporter)
-        moves = list(game.mainline_moves())
         board = game.board()
         san_moves: list[str] = []
-        for move in moves:
-            san_moves.append(board.san(move))
+        position_rows: list[dict[str, int | str | None]] = []
+        ply = 0
+        for move in game.mainline_moves():
+            san_move = board.san(move)
+            position_rows.append(
+                {
+                    "ply": ply,
+                    "position_key": build_position_key(board),
+                    "next_move": san_move,
+                }
+            )
+            san_moves.append(san_move)
             board.push(move)
+            ply += 1
+        position_rows.append(
+            {
+                "ply": ply,
+                "position_key": build_position_key(board),
+                "next_move": None,
+            }
+        )
 
         headers = game.headers
         date_sort_key, date_precision = _date_sort_fields(headers.get("Date"))
-        games.append(
+        yield (
             {
                 "game_number": game_number,
                 "source_line": source_line,
@@ -135,7 +168,8 @@ def parse_pgn_file(
                 "date_precision": date_precision,
                 "moves_san": " ".join(san_moves),
                 "pgn_text": pgn_text,
-            }
+            },
+            position_rows,
         )
 
         if progress_callback is not None and (
@@ -144,5 +178,3 @@ def parse_pgn_file(
             or game_number == total_games
         ):
             progress_callback(game_number, total_games, perf_counter() - started)
-
-    return games

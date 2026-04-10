@@ -5,6 +5,7 @@ import sqlite3
 import pandas as pd
 
 from src.aliases import resolve_player_aliases
+from src.positions import normalize_fen
 
 
 def normalize_aliases(raw_aliases: str) -> list[str]:
@@ -446,3 +447,86 @@ def load_move_summary(
         .reset_index(drop=True)
     )
     return summary_df
+
+
+def load_move_summary_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+    usernames: str,
+    side: str,
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    eco_prefix: str = "",
+) -> pd.DataFrame:
+    where_sql, params = _build_stats_where_clause(
+        usernames, f"position_move_summary_{side}", side, None, (), player, color, result, eco_prefix
+    )
+    params["position_key"] = normalize_fen(fen)
+    query = f"""
+        SELECT
+            p.next_move AS move,
+            COUNT(*) AS games,
+            SUM(CASE WHEN g.result = '1-0' THEN 1 ELSE 0 END) AS white,
+            SUM(CASE WHEN g.result = '1/2-1/2' THEN 1 ELSE 0 END) AS draw,
+            SUM(CASE WHEN g.result = '0-1' THEN 1 ELSE 0 END) AS black
+        FROM positions p
+        INNER JOIN games g ON g.id = p.game_id
+        {where_sql} AND p.position_key = :position_key AND p.next_move IS NOT NULL
+        GROUP BY p.next_move
+        ORDER BY games DESC, move ASC
+    """
+    return pd.read_sql_query(query, connection, params=params)
+
+
+def load_games_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+    limit: int = 200,
+) -> pd.DataFrame:
+    position_key = normalize_fen(fen)
+    query = """
+        SELECT
+            g.id,
+            g.game_number,
+            p.ply,
+            g.source_line,
+            g.date,
+            g.white,
+            g.black,
+            g.result,
+            g.eco,
+            g.white_elo,
+            g.black_elo,
+            g.event,
+            g.site
+        FROM positions p
+        INNER JOIN games g ON g.id = p.game_id
+        WHERE p.position_key = :position_key
+        ORDER BY
+            CASE WHEN g.date_sort_key = 0 THEN 1 ELSE 0 END ASC,
+            g.date_sort_key DESC,
+            g.date_precision ASC,
+            g.game_number DESC,
+            p.ply ASC
+        LIMIT :limit
+    """
+    return pd.read_sql_query(query, connection, params={"position_key": position_key, "limit": limit})
+
+
+def load_next_moves_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+) -> pd.DataFrame:
+    position_key = normalize_fen(fen)
+    query = """
+        SELECT
+            next_move AS move,
+            COUNT(*) AS games
+        FROM positions
+        WHERE position_key = :position_key
+          AND next_move IS NOT NULL
+        GROUP BY next_move
+        ORDER BY games DESC, move ASC
+    """
+    return pd.read_sql_query(query, connection, params={"position_key": position_key})
