@@ -96,6 +96,26 @@ $env:PGN_EXPLORER_MODE="public"
 streamlit run app.py
 ```
 
+For a Streamlit Community Cloud deployment, point the app at
+`streamlit_app.py`. That wrapper forces:
+
+- `PGN_EXPLORER_MODE=public`
+- `PGN_EXPLORER_PGN_PATH=pgn/public_anonymised.pgn` via mode defaults
+- `PGN_EXPLORER_DB_PATH=data/public_games.db` via mode defaults
+- `PGN_EXPLORER_ALLOW_PGN_WRITES=0`
+
+Build `data/public_games.db` locally first:
+
+```powershell
+$env:PGN_EXPLORER_MODE="public"
+python import_pgn.py
+```
+
+Then commit `pgn/public_anonymised.pgn`, `data/public_games.db`, and
+`streamlit_app.py`, and deploy that file on Community Cloud. In that deployed
+mode, the app is intentionally read-only: PGN write-back and in-app database
+rebuild are both disabled.
+
 Local-only Windows launchers can also be kept at repo root:
 
 - `run_private.bat`

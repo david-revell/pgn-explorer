@@ -388,7 +388,15 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
                 )
                 st.rerun()
 
-    if action_columns[2].button("Rebuild database", key="rebuild_database_from_source"):
+    rebuild_disabled_help = None
+    if not APP_CONFIG.allow_pgn_writes:
+        rebuild_disabled_help = "Database rebuild is disabled in the current app mode."
+    if action_columns[2].button(
+        "Rebuild database",
+        key="rebuild_database_from_source",
+        disabled=not APP_CONFIG.allow_pgn_writes,
+        help=rebuild_disabled_help,
+    ):
         progress_container = st.container()
         progress_text = progress_container.empty()
         progress_bar = progress_container.progress(0.0)
@@ -475,7 +483,7 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
         source_only_games = int((editor_df["source_eco"].fillna("").str.strip() != "").sum())
         if source_only_games:
             st.info(
-                f"{source_only_games} game(s) in this queue already have an ECO in `all.pgn` but still appear here "
+                f"{source_only_games} game(s) in this queue already have an ECO in `{DEFAULT_PGN_PATH}` but still appear here "
                 "because the database has not been rebuilt yet."
             )
 
