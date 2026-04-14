@@ -2,8 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 data/*.db
+!data/public_games.db
 internal/
 pgn/*.pgn
 !pgn/example.pgn
+!pgn/public_anonymised.pgn
 run_private.bat
 run_public.bat
