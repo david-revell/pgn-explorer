@@ -2,6 +2,8 @@
 
 Local chess database and Streamlit app for importing, searching, and reviewing PGN game archives.
 
+**Public app:** https://pgn-explorer.streamlit.app
+
 ## Data
 
 Put your personal PGN archive in `pgn/`. The repository ignores personal `.pgn` files by default, but keeps `pgn/example.pgn` so the project remains usable for other people.
