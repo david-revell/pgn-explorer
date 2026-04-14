@@ -26,6 +26,24 @@ Default paths by mode:
   - `data/public_games.db`
   - PGN writes disabled
 
+## Public-safe dataset
+
+If you want a deployable public version without exposing your full private PGN
+archive, generate an anonymised PGN copy first:
+
+```powershell
+python anonymize_pgn.py --input pgn/all.pgn --output pgn/public_anonymised.pgn
+```
+
+The anonymiser is intentionally simple:
+
+- online platform identities such as `Lichess`, `Chess.com`, `GameKnot`, and
+  `GameColony` are normalised and preserved
+- real-world `Site` and `Event` values are collapsed to `Over-the-board`
+- safe public handles can remain
+- other player identities are replaced with stable aliases such as
+  `Player_0001`
+
 ## Local setup
 
 Create and activate your virtual environment, then install requirements:
@@ -38,7 +56,9 @@ pip install -r requirements.txt
 
 ## Usage
 
-Each import rebuilds `data/games.db` from the PGN file you specify. In other words, rerunning the importer overwrites the current database contents with a fresh import from source.
+Each import rebuilds the target SQLite database from the PGN file you specify.
+In other words, rerunning the importer overwrites the current database contents
+with a fresh import from source.
 
 Import the sample PGN:
 
@@ -52,6 +72,13 @@ Import your archive:
 python import_pgn.py --pgn pgn/all.pgn
 ```
 
+Import in public mode:
+
+```powershell
+$env:PGN_EXPLORER_MODE="public"
+python import_pgn.py
+```
+
 During import, progress is printed to the terminal.
 
 If you edit or delete games in `pgn/all.pgn`, rerun the importer so the database matches the source again.
@@ -61,6 +88,20 @@ Start the app:
 ```powershell
 streamlit run app.py
 ```
+
+Start the app in public mode:
+
+```powershell
+$env:PGN_EXPLORER_MODE="public"
+streamlit run app.py
+```
+
+Local-only Windows launchers can also be kept at repo root:
+
+- `run_private.bat`
+- `run_public.bat`
+
+These are intentionally ignored by git.
 
 The app currently has two pages:
 
@@ -144,7 +185,7 @@ This page is intended as a review queue rather than an automatic cleanup step.
 For `Missing ECO`, the app now includes a batch editor:
 
 - stage ECO values for many games in Streamlit
-- save those ECO tags back to `pgn/all.pgn`
+- save those ECO tags back to the active PGN source
 - rebuild the database separately when you are ready
 
 This avoids a full rebuild after every single ECO change. Until you rebuild, the database-backed queue will still show the older ECO state.
@@ -167,10 +208,10 @@ Fully missing dates sort last.
 
 1. Run `streamlit run app.py`
 2. Open `Data review`
-3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to `pgn/all.pgn`
+3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source
 4. For other fixes, find the bad game and note its `source_line`
-5. Edit or delete that game in `pgn/all.pgn`
-6. Rerun `python import_pgn.py --pgn pgn/all.pgn`
+5. Edit or delete that game in the active PGN source
+6. Rerun the importer for the active mode
 7. Refresh the app and repeat until the counts are clean
 
 ## Scope
@@ -180,5 +221,5 @@ Current first version:
 - Import PGN games into a local SQLite database
 - Search and filter games in Streamlit
 - View the current opening position on a board while exploring moves
-- Edit missing ECO tags in batches and write them back to `pgn/all.pgn`
+- Edit missing ECO tags in batches and write them back to the active PGN source when writes are enabled
 - View the selected game's PGN directly

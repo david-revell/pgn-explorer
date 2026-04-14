@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.config import APP_CONFIG
 
-PLAYER_ALIAS_GROUPS = {
+
+PRIVATE_PLAYER_ALIAS_GROUPS = {
     "Malcolm Pawlak": {
         "search_names": [
             "Malcolm Pawlak",
@@ -17,6 +19,25 @@ PLAYER_ALIAS_GROUPS = {
         ],
     }
 }
+
+PUBLIC_PLAYER_ALIAS_GROUPS = {
+    "oldjingleballicks": {
+        "search_names": [
+            "oldjingleballicks",
+            "Oldjingleballiks",
+        ],
+        "lookup_terms": [
+            "oldjingleballicks",
+            "Oldjingleballiks",
+        ],
+    }
+}
+
+
+def _active_alias_groups() -> dict[str, dict[str, list[str]]]:
+    if APP_CONFIG.mode == "public":
+        return PUBLIC_PLAYER_ALIAS_GROUPS
+    return PRIVATE_PLAYER_ALIAS_GROUPS
 
 
 def _normalize(value: str) -> str:
@@ -34,7 +55,7 @@ def resolve_player_aliases(player_text: str) -> dict[str, object]:
         }
 
     normalized_input = _normalize(cleaned)
-    for canonical_name, config in PLAYER_ALIAS_GROUPS.items():
+    for canonical_name, config in _active_alias_groups().items():
         lookup_terms = {_normalize(term) for term in config["lookup_terms"]}
         if normalized_input in lookup_terms:
             return {
@@ -54,7 +75,7 @@ def resolve_player_aliases(player_text: str) -> dict[str, object]:
 
 def load_alias_table() -> pd.DataFrame:
     rows: list[dict[str, str]] = []
-    for canonical_name, config in PLAYER_ALIAS_GROUPS.items():
+    for canonical_name, config in _active_alias_groups().items():
         rows.append(
             {
                 "Canonical name": canonical_name,

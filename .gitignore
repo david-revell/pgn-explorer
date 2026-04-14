@@ -5,3 +5,5 @@ data/*.db
 internal/
 pgn/*.pgn
 !pgn/example.pgn
+run_private.bat
+run_public.bat
