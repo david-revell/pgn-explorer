@@ -4,8 +4,10 @@ import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
 
+from src.config import APP_CONFIG
 
-DEFAULT_DB_PATH = Path("data/games.db")
+
+DEFAULT_DB_PATH = APP_CONFIG.db_path
 
 
 CREATE_TABLE_SQL = """

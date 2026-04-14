@@ -10,6 +10,7 @@ import streamlit as st
 
 from import_pgn import DEFAULT_PGN_PATH, import_archive
 from src.aliases import load_alias_table, resolve_player_aliases
+from src.config import APP_CONFIG
 from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
 from src.move_text import parse_move_text
 from src.pgn_source import get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
@@ -362,7 +363,15 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
         eco_by_game_number = get_eco_by_game_number(source_session)
         st.rerun()
 
-    if action_columns[1].button("Save ECOs to PGN", key="save_eco_source"):
+    save_disabled_help = None
+    if not APP_CONFIG.allow_pgn_writes:
+        save_disabled_help = "PGN write-back is disabled in the current app mode."
+    if action_columns[1].button(
+        "Save ECOs to PGN",
+        key="save_eco_source",
+        disabled=not APP_CONFIG.allow_pgn_writes,
+        help=save_disabled_help,
+    ):
         if not pending_updates:
             st.info("No staged ECO updates to save.")
         else:
@@ -417,6 +426,8 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
         f"Staged ECO updates: {len(pending_updates)}. "
         "Saving updates the source PGN only. Rebuild the database separately when you want the queue refreshed."
     )
+    if not APP_CONFIG.allow_pgn_writes:
+        st.info("PGN write-back is disabled in the current app mode.")
 
     editor_df = review_df.copy()
     editor_df["source_eco"] = editor_df["game_number"].map(eco_by_game_number).fillna("")
@@ -836,9 +847,9 @@ def main() -> None:
         "Data review": "Data review",
     }[page]
     st.title(title)
+    st.caption(f"Mode: `{APP_CONFIG.mode}` | PGN: `{DEFAULT_PGN_PATH}` | DB: `{DEFAULT_DB_PATH}`")
 
-    db_path = Path("data/games.db")
-    db_exists = db_path.exists()
+    db_exists = DEFAULT_DB_PATH.exists()
 
     with get_connection(DEFAULT_DB_PATH) as connection:
         initialize_database(connection)
@@ -849,7 +860,7 @@ def main() -> None:
 
         if not database_has_required_schema(connection):
             st.warning(
-                "The database was built with an older schema. Run `python import_pgn.py --pgn pgn/all.pgn` to rebuild it."
+                f"The database was built with an older schema. Run `python import_pgn.py --pgn {DEFAULT_PGN_PATH}` to rebuild it."
             )
             return
 

@@ -5,11 +5,12 @@ from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
+from src.config import APP_CONFIG
 from src.db import DEFAULT_DB_PATH, get_connection, replace_games
 from src.parser import count_games_in_pgn, iter_parsed_games
 
 
-DEFAULT_PGN_PATH = Path("pgn/all.pgn")
+DEFAULT_PGN_PATH = APP_CONFIG.pgn_path
 
 
 def report_progress(parsed_games: int, total_games: int | None, elapsed_seconds: float) -> None:

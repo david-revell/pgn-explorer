@@ -6,6 +6,26 @@ Local chess database and Streamlit app for importing, searching, and reviewing P
 
 Put your personal PGN archive in `pgn/`. The repository ignores personal `.pgn` files by default, but keeps `pgn/example.pgn` so the project remains usable for other people.
 
+The app can also run in different data modes via environment variables:
+
+- `PGN_EXPLORER_MODE=private` (default)
+- `PGN_EXPLORER_MODE=public`
+- optional overrides:
+  - `PGN_EXPLORER_PGN_PATH`
+  - `PGN_EXPLORER_DB_PATH`
+  - `PGN_EXPLORER_ALLOW_PGN_WRITES`
+
+Default paths by mode:
+
+- `private`
+  - `pgn/all.pgn`
+  - `data/games.db`
+  - PGN writes enabled
+- `public`
+  - `pgn/public_anonymised.pgn`
+  - `data/public_games.db`
+  - PGN writes disabled
+
 ## Local setup
 
 Create and activate your virtual environment, then install requirements:
