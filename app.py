@@ -514,6 +514,7 @@ def render_opening_explorer(connection) -> None:
     with st.sidebar:
         st.header("Filters")
         player = st.text_input("Player")
+        st.caption("Use % as a wildcard")
         color = st.selectbox("Colour", ["Any", "White", "Black"])
         result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
         eco_prefix = st.text_input("ECO starts with")

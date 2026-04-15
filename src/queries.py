@@ -52,6 +52,15 @@ def _append_player_clause(
     params: dict[str, object],
     player: str,
 ) -> None:
+    """Append a WHERE clause filtering games by player name.
+
+    If the player text matches a known alias group, expands to all known
+    variants using the pre-normalised white_norm/black_norm columns.
+
+    Otherwise, matches are case-insensitive against the raw white/black columns:
+    - Exact match by default (e.g. "Magnus" will not match "Magnus Carlsen")
+    - % acts as a wildcard (e.g. "%Magnus%" matches any name containing "Magnus")
+    """
     resolved = resolve_player_aliases(player)
     if resolved["expanded"]:
         search_names = resolved["search_names"]
@@ -68,8 +77,13 @@ def _append_player_clause(
         )
         return
 
-    params["player"] = f"%{player.strip()}%"
-    clauses.append("(white LIKE :player OR black LIKE :player)")
+    term = player.strip().lower()
+    if "%" in term:
+        params["player"] = term
+        clauses.append("(LOWER(white) LIKE :player OR LOWER(black) LIKE :player)")
+    else:
+        params["player"] = term
+        clauses.append("(LOWER(white) = :player OR LOWER(black) = :player)")
 
 
 def _append_shared_game_filters(
@@ -495,6 +509,8 @@ def load_games_by_position(
     clauses = ["p.position_key = :position_key"]
 
     if player.strip():
+        # Same matching logic as _append_player_clause: alias expansion takes
+        # priority, otherwise exact case-insensitive match with % wildcard support.
         resolved = resolve_player_aliases(player)
         if resolved["expanded"]:
             placeholders: list[str] = []
@@ -505,8 +521,13 @@ def load_games_by_position(
             alias_sql = ", ".join(placeholders)
             clauses.append(f"(g.white_norm IN ({alias_sql}) OR g.black_norm IN ({alias_sql}))")
         else:
-            params["player"] = f"%{player.strip()}%"
-            clauses.append("(g.white LIKE :player OR g.black LIKE :player)")
+            term = player.strip().lower()
+            if "%" in term:
+                params["player"] = term
+                clauses.append("(LOWER(g.white) LIKE :player OR LOWER(g.black) LIKE :player)")
+            else:
+                params["player"] = term
+                clauses.append("(LOWER(g.white) = :player OR LOWER(g.black) = :player)")
 
     if result != "Any":
         clauses.append("g.result = :result")

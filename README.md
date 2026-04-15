@@ -140,6 +140,27 @@ The `Opening explorer` currently includes:
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
 - an optional sidebar FEN seed, so exploration can start from any directly entered position
 
+## Filters
+
+The sidebar exposes filters that apply across the opening explorer and game list.
+
+### Player filter
+
+Matches are case-insensitive. By default the search is exact — typing `Magnus` will match a player named `Magnus` but not `Magnus Carlsen`.
+
+Use `%` as a wildcard to match any characters:
+
+| Input | Matches |
+|---|---|
+| `Magnus` | Exactly "Magnus" (any case) |
+| `Magnus%` | Any name starting with "Magnus" |
+| `%son` | Any name ending in "son" |
+| `%agn%` | Any name containing "agn" |
+
+### Player aliases
+
+If a player appears under multiple names (e.g. a real name and an online handle), aliases can be defined in `src/aliases.py`. When a search term matches a known alias group, all variants are searched automatically and an info banner lists the expanded aliases.
+
 ## Position-based explorer
 
 The opening explorer now runs on precomputed position data rather than only a literal move prefix.
