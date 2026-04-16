@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS games (
     date_sort_key INTEGER NOT NULL,
     date_precision INTEGER NOT NULL,
     moves_san TEXT NOT NULL,
-    pgn_text TEXT NOT NULL
+    pgn_text TEXT NOT NULL,
+    final_opening_eco TEXT,
+    final_opening_name TEXT
 );
 """
 
@@ -76,6 +78,7 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_games_date ON games (date)",
     "CREATE INDEX IF NOT EXISTS idx_games_date_sort ON games (date_sort_key DESC, date_precision ASC, game_number DESC)",
     "CREATE INDEX IF NOT EXISTS idx_games_moves_san ON games (moves_san)",
+    "CREATE INDEX IF NOT EXISTS idx_games_final_opening_name ON games (final_opening_name)",
     "CREATE INDEX IF NOT EXISTS idx_positions_position_key ON positions (position_key)",
     "CREATE INDEX IF NOT EXISTS idx_positions_game_ply ON positions (game_id, ply)",
     "CREATE INDEX IF NOT EXISTS idx_opening_positions_position_key ON opening_positions (position_key)",
@@ -273,7 +276,43 @@ def replace_games(
         total_positions += inserted_positions
 
     connection.commit()
+    update_final_openings(connection)
     return (total_games, total_positions)
+
+
+def update_final_openings(connection: sqlite3.Connection) -> None:
+    """Precompute the final recognised opening for each game.
+
+    For each game, finds the last ply where the position matches a row in
+    opening_positions, and writes the corresponding eco and name to the games
+    table. Games with no recognised opening get NULL in both columns.
+
+    Should be called after replace_games() and after replace_opening_positions()
+    so the data stays in sync when either table is rebuilt.
+    """
+    connection.execute(
+        """
+        UPDATE games
+        SET
+            final_opening_eco = (
+                SELECT op.eco
+                FROM positions p
+                JOIN opening_positions op ON op.position_key = p.position_key
+                WHERE p.game_id = games.id
+                ORDER BY p.ply DESC
+                LIMIT 1
+            ),
+            final_opening_name = (
+                SELECT op.name
+                FROM positions p
+                JOIN opening_positions op ON op.position_key = p.position_key
+                WHERE p.game_id = games.id
+                ORDER BY p.ply DESC
+                LIMIT 1
+            )
+        """
+    )
+    connection.commit()
 
 
 def replace_opening_positions(connection: sqlite3.Connection, opening_rows: list[dict[str, str]]) -> int:

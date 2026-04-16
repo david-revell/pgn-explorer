@@ -161,6 +161,17 @@ Use `%` as a wildcard to match any characters:
 
 If a player appears under multiple names (e.g. a real name and an online handle), aliases can be defined in `src/aliases.py`. When a search term matches a known alias group, all variants are searched automatically and an info banner lists the expanded aliases.
 
+### Opening filter
+
+A single input handles both ECO codes and opening names. The input is interpreted by shape:
+
+- **ECO code** — a letter A–E optionally followed by up to two digits (e.g. `C`, `C6`, `C65`). Treated as a prefix match against the game's ECO tag.
+- **Opening name** — anything else. Treated as a case-insensitive substring match against the precomputed final opening name (e.g. `frenc` matches "French Defence" and all its variations).
+
+The final opening name is the last position in the game that was recognised against the opening reference dataset — i.e. the deepest named position before the game went out of book. It is precomputed during import and stored on the `games` table, so filtering is fast.
+
+If the opening reference data is re-imported separately (`internal/import_openings.py`), final opening names are refreshed automatically.
+
 ## Position-based explorer
 
 The opening explorer now runs on precomputed position data rather than only a literal move prefix.

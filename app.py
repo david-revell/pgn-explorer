@@ -65,7 +65,7 @@ def _load_player_summary_cached(
     player: str,
     color: str,
     result: str,
-    eco_prefix: str,
+    opening: str,
 ) -> pd.DataFrame:
     with get_connection(DEFAULT_DB_PATH) as connection:
         return load_player_summary(
@@ -76,7 +76,7 @@ def _load_player_summary_cached(
             player=player,
             color=color,
             result=result,
-            eco_prefix=eco_prefix,
+            opening=opening,
         )
 
 
@@ -89,7 +89,7 @@ def _load_move_summary_cached(
     player: str,
     color: str,
     result: str,
-    eco_prefix: str,
+    opening: str,
 ) -> pd.DataFrame:
     with get_connection(DEFAULT_DB_PATH) as connection:
         return load_move_summary(
@@ -100,7 +100,7 @@ def _load_move_summary_cached(
             player=player,
             color=color,
             result=result,
-            eco_prefix=eco_prefix,
+            opening=opening,
         )
 
 
@@ -113,7 +113,7 @@ def _load_move_summary_by_position_cached(
     player: str,
     color: str,
     result: str,
-    eco_prefix: str,
+    opening: str,
 ) -> pd.DataFrame:
     with get_connection(DEFAULT_DB_PATH) as connection:
         return load_move_summary_by_position(
@@ -124,7 +124,7 @@ def _load_move_summary_by_position_cached(
             player=player,
             color=color,
             result=result,
-            eco_prefix=eco_prefix,
+            opening=opening,
         )
 
 
@@ -135,7 +135,7 @@ def _load_games_cached(
     player: str,
     color: str,
     result: str,
-    eco_prefix: str,
+    opening: str,
     usernames: str,
     limit: int,
 ) -> pd.DataFrame:
@@ -146,7 +146,7 @@ def _load_games_cached(
             player=player,
             color=color,
             result=result,
-            eco_prefix=eco_prefix,
+            opening=opening,
             usernames=usernames,
             limit=limit,
         )
@@ -159,7 +159,7 @@ def _load_games_by_position_cached(
     player: str,
     color: str,
     result: str,
-    eco_prefix: str,
+    opening: str,
     usernames: str,
     limit: int,
 ) -> pd.DataFrame:
@@ -170,7 +170,7 @@ def _load_games_by_position_cached(
             player=player,
             color=color,
             result=result,
-            eco_prefix=eco_prefix,
+            opening=opening,
             usernames=usernames,
             limit=limit,
         )
@@ -517,7 +517,8 @@ def render_opening_explorer(connection) -> None:
         st.caption("Use % as a wildcard")
         color = st.selectbox("Colour", ["Any", "White", "Black"])
         result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
-        eco_prefix = st.text_input("ECO starts with")
+        opening = st.text_input("Opening")
+        st.caption("ECO code (e.g. C65) or part of an opening name")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25)
         st.header("Position")
         seed_fen_text = st.text_area(
@@ -593,7 +594,7 @@ def render_opening_explorer(connection) -> None:
                 player,
                 color,
                 result,
-                eco_prefix,
+                opening,
             )
         )
         st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
@@ -619,9 +620,9 @@ def render_opening_explorer(connection) -> None:
 
     if current_fen:
         if active_seed_fen:
-            opening = _load_latest_opening_for_seed_and_moves_cached(db_version, active_seed_fen, move_sequence)
+            board_opening = _load_latest_opening_for_seed_and_moves_cached(db_version, active_seed_fen, move_sequence)
         else:
-            opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
+            board_opening = _load_latest_opening_for_move_sequence_cached(db_version, move_sequence)
         if active_seed_fen:
             st.markdown(
                 """
@@ -643,7 +644,7 @@ def render_opening_explorer(connection) -> None:
                 st.session_state["opening_seed_move_sequence_fen"] = None
                 st.session_state["opening_move_text_synced_sequence"] = None
                 st.rerun()
-        _render_opening_label(opening)
+        _render_opening_label(board_opening)
 
     with controls_column:
         st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
@@ -676,7 +677,7 @@ def render_opening_explorer(connection) -> None:
                     player,
                     color,
                     result,
-                    eco_prefix,
+                    opening,
                 )
             else:
                 move_summary_df = pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
@@ -684,7 +685,7 @@ def render_opening_explorer(connection) -> None:
             selected_move = render_clickable_move_summary(
                 move_summary_df,
                 ply_index=current_ply_index,
-                key_prefix=f"position_move_{current_ply_index}_{color}_{player}_{result}_{eco_prefix}_{active_seed_fen}",
+                key_prefix=f"position_move_{current_ply_index}_{color}_{player}_{result}_{opening}_{active_seed_fen}",
                 show_move_prefix=False,
             )
     entered_move_text = st.text_input(
@@ -711,7 +712,7 @@ def render_opening_explorer(connection) -> None:
             player,
             color,
             result,
-            eco_prefix,
+            opening,
             PLAYER_USERNAMES,
             limit,
         )

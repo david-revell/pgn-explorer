@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 
 import pandas as pd
 
 from src.aliases import resolve_player_aliases
 from src.positions import normalize_fen
+
+
+def _is_eco_input(value: str) -> bool:
+    """Return True if value looks like an ECO code prefix (e.g. 'C', 'C6', 'C65')."""
+    return bool(re.fullmatch(r"[A-Ea-e]\d{0,2}", value.strip()))
 
 
 def normalize_aliases(raw_aliases: str) -> list[str]:
@@ -95,7 +101,7 @@ def _append_shared_game_filters(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
     quality_filter: str = "All games",
 ) -> None:
     if game_number is not None:
@@ -118,9 +124,14 @@ def _append_shared_game_filters(
         clauses.append("result = :result")
         params["result"] = result
 
-    if eco_prefix.strip():
-        clauses.append("eco LIKE :eco_prefix")
-        params["eco_prefix"] = f"{eco_prefix.strip()}%"
+    if opening and opening.strip():
+        term = opening.strip()
+        if _is_eco_input(term):
+            clauses.append("eco LIKE :eco_prefix")
+            params["eco_prefix"] = f"{term.upper()}%"
+        else:
+            clauses.append("LOWER(final_opening_name) LIKE :opening_name")
+            params["opening_name"] = f"%{term.lower()}%"
 
     if quality_filter == "Missing result":
         clauses.append("(result IS NULL OR TRIM(result) = '' OR result = '*')")
@@ -138,7 +149,7 @@ def load_games(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
     quality_filter: str = "All games",
     usernames: str = "peletis",
     limit: int = 200,
@@ -160,7 +171,7 @@ def load_games(
         player=player,
         color=color,
         result=result,
-        eco_prefix=eco_prefix,
+        opening=opening,
         quality_filter=quality_filter,
     )
 
@@ -311,7 +322,7 @@ def _build_stats_where_clause(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
 ) -> tuple[str, dict[str, object]]:
     aliases = normalize_aliases(usernames)
     if not aliases:
@@ -331,7 +342,7 @@ def _build_stats_where_clause(
         player=player,
         color=color,
         result=result,
-        eco_prefix=eco_prefix,
+        opening=opening,
     )
 
     if side == "white":
@@ -376,13 +387,13 @@ def load_player_summary(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
 ) -> pd.DataFrame:
     rows: list[dict[str, int | str]] = []
 
     if color == "Any":
         total_where_sql, total_params = _build_stats_where_clause(
-            usernames, "summary_total", "total", game_number, move_sequence, player, color, result, eco_prefix
+            usernames, "summary_total", "total", game_number, move_sequence, player, color, result, opening
         )
         total_row = {"Colour": "Total", "Position": position_label, **_load_result_summary(connection, total_where_sql, total_params)}
     else:
@@ -390,13 +401,13 @@ def load_player_summary(
 
     if color in {"Any", "White"}:
         white_where_sql, white_params = _build_stats_where_clause(
-            usernames, "summary_white", "white", game_number, move_sequence, player, color, result, eco_prefix
+            usernames, "summary_white", "white", game_number, move_sequence, player, color, result, opening
         )
         rows.append({"Colour": "White", "Position": position_label, **_load_result_summary(connection, white_where_sql, white_params)})
 
     if color in {"Any", "Black"}:
         black_where_sql, black_params = _build_stats_where_clause(
-            usernames, "summary_black", "black", game_number, move_sequence, player, color, result, eco_prefix
+            usernames, "summary_black", "black", game_number, move_sequence, player, color, result, opening
         )
         rows.append({"Colour": "Black", "Position": position_label, **_load_result_summary(connection, black_where_sql, black_params)})
 
@@ -415,10 +426,10 @@ def load_move_summary(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
 ) -> pd.DataFrame:
     where_sql, params = _build_stats_where_clause(
-        usernames, f"move_summary_{side}", side, game_number, move_sequence, player, color, result, eco_prefix
+        usernames, f"move_summary_{side}", side, game_number, move_sequence, player, color, result, opening
     )
     query = f"""
         SELECT
@@ -471,10 +482,10 @@ def load_move_summary_by_position(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
 ) -> pd.DataFrame:
     where_sql, params = _build_stats_where_clause(
-        usernames, f"position_move_summary_{side}", side, None, (), player, color, result, eco_prefix
+        usernames, f"position_move_summary_{side}", side, None, (), player, color, result, opening
     )
     params["position_key"] = normalize_fen(fen)
     query = f"""
@@ -499,7 +510,7 @@ def load_games_by_position(
     player: str = "",
     color: str = "Any",
     result: str = "Any",
-    eco_prefix: str = "",
+    opening: str = "",
     usernames: str = "peletis",
     limit: int = 200,
 ) -> pd.DataFrame:
@@ -533,9 +544,14 @@ def load_games_by_position(
         clauses.append("g.result = :result")
         params["result"] = result
 
-    if eco_prefix.strip():
-        clauses.append("g.eco LIKE :eco_prefix")
-        params["eco_prefix"] = f"{eco_prefix.strip()}%"
+    if opening and opening.strip():
+        term = opening.strip()
+        if _is_eco_input(term):
+            clauses.append("g.eco LIKE :eco_prefix")
+            params["eco_prefix"] = f"{term.upper()}%"
+        else:
+            clauses.append("LOWER(g.final_opening_name) LIKE :opening_name")
+            params["opening_name"] = f"%{term.lower()}%"
 
     if color == "White" and aliases:
         clauses.append(_build_alias_match_clause("g.white_norm", aliases, params, "position_games_white_alias"))
