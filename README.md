@@ -4,6 +4,8 @@ Local chess database and Streamlit app for importing, searching, and reviewing P
 
 **Public app:** https://pgn-explorer.streamlit.app
 
+> **Desktop or large tablet only.** The app is not optimised for small screens. Streamlit's column layout does not reflow on narrow viewports, and the board is rendered at a fixed size — both combine to make the experience poor on a phone or tablet in portrait mode. Use a desktop browser or a large tablet in landscape.
+
 ## Data
 
 Put your personal PGN archive in `pgn/`. The repository ignores personal `.pgn` files by default, but keeps `pgn/example.pgn` so the project remains usable for other people.

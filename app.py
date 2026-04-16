@@ -863,6 +863,7 @@ def main() -> None:
 
     with st.sidebar:
         page = st.radio("Page", ["Opening explorer", "Data review"])
+        st.caption("Best experienced on desktop — not optimised for mobile.")
 
     if page == "Data review":
         st.title("Data review")
