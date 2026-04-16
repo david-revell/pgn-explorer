@@ -57,6 +57,7 @@ def _append_player_clause(
     clauses: list[str],
     params: dict[str, object],
     player: str,
+    color: str = "Any",
 ) -> None:
     """Append a WHERE clause filtering games by player name.
 
@@ -66,6 +67,9 @@ def _append_player_clause(
     Otherwise, matches are case-insensitive against the raw white/black columns:
     - Exact match by default (e.g. "Magnus" will not match "Magnus Carlsen")
     - % acts as a wildcard (e.g. "%Magnus%" matches any name containing "Magnus")
+
+    When color is "White" or "Black", the match is restricted to that side,
+    so the colour filter refers to the typed player rather than the app owner.
     """
     resolved = resolve_player_aliases(player)
     if resolved["expanded"]:
@@ -77,19 +81,31 @@ def _append_player_clause(
             placeholders.append(f":{key}")
 
         alias_sql = ", ".join(placeholders)
-        clauses.append(
-            f"(white_norm IN ({alias_sql}) "
-            f"OR black_norm IN ({alias_sql}))"
-        )
+        if color == "White":
+            clauses.append(f"white_norm IN ({alias_sql})")
+        elif color == "Black":
+            clauses.append(f"black_norm IN ({alias_sql})")
+        else:
+            clauses.append(f"(white_norm IN ({alias_sql}) OR black_norm IN ({alias_sql}))")
         return
 
     term = player.strip().lower()
     if "%" in term:
         params["player"] = term
-        clauses.append("(LOWER(white) LIKE :player OR LOWER(black) LIKE :player)")
+        if color == "White":
+            clauses.append("LOWER(white) LIKE :player")
+        elif color == "Black":
+            clauses.append("LOWER(black) LIKE :player")
+        else:
+            clauses.append("(LOWER(white) LIKE :player OR LOWER(black) LIKE :player)")
     else:
         params["player"] = term
-        clauses.append("(LOWER(white) = :player OR LOWER(black) = :player)")
+        if color == "White":
+            clauses.append("LOWER(white) = :player")
+        elif color == "Black":
+            clauses.append("LOWER(black) = :player")
+        else:
+            clauses.append("(LOWER(white) = :player OR LOWER(black) = :player)")
 
 
 def _append_shared_game_filters(
@@ -118,7 +134,7 @@ def _append_shared_game_filters(
         params["move_prefix_end"] = f"{move_text} \uffff"
 
     if player.strip():
-        _append_player_clause(clauses, params, player)
+        _append_player_clause(clauses, params, player, color)
 
     if result != "Any":
         clauses.append("result = :result")
@@ -175,10 +191,11 @@ def load_games(
         quality_filter=quality_filter,
     )
 
-    if color == "White" and aliases:
-        clauses.append(_build_alias_match_clause("white_norm", aliases, params, "games_white_alias"))
-    elif color == "Black" and aliases:
-        clauses.append(_build_alias_match_clause("black_norm", aliases, params, "games_black_alias"))
+    if not player.strip():
+        if color == "White" and aliases:
+            clauses.append(_build_alias_match_clause("white_norm", aliases, params, "games_white_alias"))
+        elif color == "Black" and aliases:
+            clauses.append(_build_alias_match_clause("black_norm", aliases, params, "games_black_alias"))
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -333,24 +350,32 @@ def _build_stats_where_clause(
     white_match = _build_alias_match_clause("white_norm", aliases, params, f"{prefix}_white_alias")
     black_match = _build_alias_match_clause("black_norm", aliases, params, f"{prefix}_black_alias")
 
+    # Add result, opening, move sequence filters — but not the player filter,
+    # which is handled separately below so the side constraint can be applied correctly.
     _append_shared_game_filters(
         clauses=clauses,
         params=params,
         aliases=aliases,
         game_number=game_number,
         move_sequence=move_sequence,
-        player=player,
-        color=color,
+        player="",
+        color="Any",
         result=result,
         opening=opening,
     )
 
-    if side == "white":
-        clauses.append(white_match)
-    elif side == "black":
-        clauses.append(black_match)
+    if player.strip():
+        # Side constraint refers to the typed player, not the app owner.
+        side_color = {"white": "White", "black": "Black"}.get(side, "Any")
+        _append_player_clause(clauses, params, player, side_color)
     else:
-        clauses.append(f"({white_match} OR {black_match})")
+        # No player typed: side constraint refers to the app owner's aliases.
+        if side == "white":
+            clauses.append(white_match)
+        elif side == "black":
+            clauses.append(black_match)
+        else:
+            clauses.append(f"({white_match} OR {black_match})")
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where_sql, params
@@ -520,25 +545,7 @@ def load_games_by_position(
     clauses = ["p.position_key = :position_key"]
 
     if player.strip():
-        # Same matching logic as _append_player_clause: alias expansion takes
-        # priority, otherwise exact case-insensitive match with % wildcard support.
-        resolved = resolve_player_aliases(player)
-        if resolved["expanded"]:
-            placeholders: list[str] = []
-            for index, search_name in enumerate(resolved["search_names"]):
-                key = f"position_player_alias_{index}"
-                params[key] = search_name
-                placeholders.append(f":{key}")
-            alias_sql = ", ".join(placeholders)
-            clauses.append(f"(g.white_norm IN ({alias_sql}) OR g.black_norm IN ({alias_sql}))")
-        else:
-            term = player.strip().lower()
-            if "%" in term:
-                params["player"] = term
-                clauses.append("(LOWER(g.white) LIKE :player OR LOWER(g.black) LIKE :player)")
-            else:
-                params["player"] = term
-                clauses.append("(LOWER(g.white) = :player OR LOWER(g.black) = :player)")
+        _append_player_clause(clauses, params, player, color)
 
     if result != "Any":
         clauses.append("g.result = :result")
@@ -553,10 +560,11 @@ def load_games_by_position(
             clauses.append("LOWER(g.final_opening_name) LIKE :opening_name")
             params["opening_name"] = f"%{term.lower()}%"
 
-    if color == "White" and aliases:
-        clauses.append(_build_alias_match_clause("g.white_norm", aliases, params, "position_games_white_alias"))
-    elif color == "Black" and aliases:
-        clauses.append(_build_alias_match_clause("g.black_norm", aliases, params, "position_games_black_alias"))
+    if not player.strip():
+        if color == "White" and aliases:
+            clauses.append(_build_alias_match_clause("g.white_norm", aliases, params, "position_games_white_alias"))
+        elif color == "Black" and aliases:
+            clauses.append(_build_alias_match_clause("g.black_norm", aliases, params, "position_games_black_alias"))
 
     where_sql = " AND ".join(clauses)
 

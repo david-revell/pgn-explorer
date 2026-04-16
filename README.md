@@ -132,6 +132,7 @@ The app currently has two pages:
 
 The `Opening explorer` currently includes:
 
+- a dynamic page title reflecting the active filters (e.g. `Games of peletis as White — Ruy Lopez`)
 - a board for the current position
 - an opening label showing `ECO + name`, with the reference opening PGN line directly underneath
 - a narrow control strip with rotate, back, and reset actions
@@ -146,7 +147,11 @@ The sidebar exposes filters that apply across the opening explorer and game list
 
 ### Player filter
 
+The player field defaults to `peletis` on load. Clear it to browse all games regardless of player.
+
 Matches are case-insensitive. By default the search is exact — typing `Magnus` will match a player named `Magnus` but not `Magnus Carlsen`.
+
+The colour filter refers to the typed player — selecting `White` shows games where that player was White.
 
 Use `%` as a wildcard to match any characters:
 

@@ -513,7 +513,9 @@ def render_opening_explorer(connection) -> None:
 
     with st.sidebar:
         st.header("Filters")
-        player = st.text_input("Player")
+        if "player_filter" not in st.session_state:
+            st.session_state["player_filter"] = "peletis"
+        player = st.text_input("Player", key="player_filter")
         st.caption("Use % as a wildcard")
         color = st.selectbox("Colour", ["Any", "White", "Black"])
         result = st.selectbox("Result", ["Any", "1-0", "0-1", "1/2-1/2", "*"])
@@ -528,6 +530,16 @@ def render_opening_explorer(connection) -> None:
             height=68,
             placeholder="Optional: paste a FEN to start from that position",
         ).strip()
+
+    if player.strip():
+        title = f"Games of {player.strip()}"
+        if color != "Any":
+            title += f" as {color}"
+        if opening.strip():
+            title += f" \u2014 {opening.strip()}"
+    else:
+        title = "Opening Explorer"
+    st.title(title)
 
     active_seed_fen = ""
     seed_fen_error = ""
@@ -852,11 +864,8 @@ def main() -> None:
     with st.sidebar:
         page = st.radio("Page", ["Opening explorer", "Data review"])
 
-    title = {
-        "Opening explorer": "Opening Explorer",
-        "Data review": "Data review",
-    }[page]
-    st.title(title)
+    if page == "Data review":
+        st.title("Data review")
     st.caption(f"Mode: `{APP_CONFIG.mode}` | PGN: `{DEFAULT_PGN_PATH}` | DB: `{DEFAULT_DB_PATH}`")
 
     db_exists = DEFAULT_DB_PATH.exists()
