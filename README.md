@@ -64,19 +64,22 @@ Each import rebuilds the target SQLite database from the PGN file you specify.
 In other words, rerunning the importer overwrites the current database contents
 with a fresh import from source.
 
-Import the sample PGN:
+The target database is determined by `PGN_EXPLORER_MODE` (or `PGN_EXPLORER_DB_PATH`).
+Without setting either, imports go to `data/games.db` (private mode default).
+
+Import the sample PGN → `data/games.db`:
 
 ```powershell
 python import_pgn.py --pgn pgn/example.pgn
 ```
 
-Import your archive:
+Import your archive → `data/games.db`:
 
 ```powershell
 python import_pgn.py --pgn pgn/all.pgn
 ```
 
-Import in public mode:
+Import in public mode → `data/public_games.db`:
 
 ```powershell
 $env:PGN_EXPLORER_MODE="public"
@@ -85,7 +88,7 @@ python import_pgn.py
 
 During import, progress is printed to the terminal.
 
-If you edit or delete games in `pgn/all.pgn`, rerun the importer so the database matches the source again.
+If you edit games in `pgn/all.pgn`, rerun the importer so the database matches the source again. Games can also be deleted directly in the app from the `Data review` page — that updates both the PGN and the database in one step with no rebuild required.
 
 Start the app:
 
@@ -130,7 +133,7 @@ These are intentionally ignored by git.
 The app currently has two pages:
 
 - `Opening explorer`: explore openings, filter games, drill into positions move by move, and seed exploration from a direct FEN
-- `Data review`: review games with targeted cleanup queues
+- `Data review`: review games with targeted cleanup queues, with in-app deletion and batch ECO editing
 
 The `Opening explorer` currently includes:
 
@@ -214,14 +217,16 @@ python internal\import_openings.py --input internal\openings.tsv
 
 ## Cleanup workflow
 
-The app is designed around source-first cleanup. If a game is bad, fix or delete it in `pgn/all.pgn`, then rerun the importer.
+The app supports two cleanup paths:
+
+**In-app deletion** (from the `Data review` page): select one or more games using the checkboxes, then confirm deletion. The app removes the games from both the PGN source and the database in one step — no rebuild required. `game_number` and `source_line` are recalculated automatically.
+
+**Manual PGN edit**: find the game using the `source_line` field (the starting line in the PGN file), edit it directly in `pgn/all.pgn`, then rerun the importer. Use this for corrections (e.g. fixing a date or result) rather than deletions.
 
 Useful fields in the app:
 
-- `game_number`: the game's order in the PGN file
+- `game_number`: the game's sequential position in the PGN file
 - `source_line`: the starting line of the game in `pgn/all.pgn`
-
-The most reliable source reference is `source_line`, because it points directly into the PGN file.
 
 ## Data quality checks
 
@@ -237,7 +242,7 @@ The sidebar uses British English in user-facing labels, for example `Colour`.
 
 ## Data Review
 
-The `Data review` page currently has these queues (shown alphabetically, defaulting to `Duplicate games`):
+The `Data review` page currently has these queues (shown alphabetically, defaulting to `Short games`):
 
 - `Duplicate games`: games with identical players, date, and move sequence — grouped in pairs so duplicates appear side by side. The `site` column helps confirm whether two entries are genuinely the same game.
 - `Missing date`: blank dates or `????.??.??`
@@ -246,7 +251,7 @@ The `Data review` page currently has these queues (shown alphabetically, default
 
 Clicking a row in any queue loads that game on a board with full move navigation.
 
-This page is intended as a review queue rather than an automatic cleanup step.
+In any queue, one or more rows can be selected using the checkboxes and deleted directly — this removes the games from both the PGN source and the database and recalculates `game_number` and `source_line` for surviving games. A confirmation step is shown before any deletion is performed. Deletion is disabled in public/read-only mode.
 
 For `Missing ECO`, the app includes a batch editor:
 
@@ -274,11 +279,10 @@ Fully missing dates sort last.
 
 1. Run `streamlit run app.py`
 2. Open `Data review`
-3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source
-4. For other fixes, find the bad game and note its `source_line`
-5. Edit or delete that game in the active PGN source
-6. Rerun the importer for the active mode
-7. Refresh the app and repeat until the counts are clean
+3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source, then rebuild the database
+4. To delete duplicate or short games, select them with the row checkboxes and confirm — the PGN and database are updated immediately, no rebuild needed
+5. For other fixes (e.g. correcting a date or result), note the `source_line`, edit the game directly in the PGN source, then rerun the importer
+6. Repeat until the counts are clean
 
 ## Limitations
 
@@ -295,4 +299,5 @@ These were considered or tried and decided against:
 - Explore openings position by position on a board, with transposition awareness and opening labels
 - Click any game in a list to load it on a board and step through the moves
 - Detect duplicate games and short games via dedicated review queues
+- Delete games in-app from any review queue — updates the PGN source and database atomically, with automatic renumbering
 - Edit missing ECO tags in batches and write them back to the active PGN source when writes are enabled

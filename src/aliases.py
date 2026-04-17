@@ -11,11 +11,13 @@ PRIVATE_PLAYER_ALIAS_GROUPS = {
             "Malcolm Pawlak",
             "oldjingleballicks",
             "Oldjingleballiks",
+            "Doov",
         ],
         "lookup_terms": [
             "Malcolm Pawlak",
             "oldjingleballicks",
             "Oldjingleballiks",
+            "Doov",
         ],
     }
 }

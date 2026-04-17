@@ -231,6 +231,29 @@ def _insert_games_batch(
     return (len(games), len(position_rows))
 
 
+def delete_games(connection: sqlite3.Connection, game_ids: list[int]) -> None:
+    if not game_ids:
+        return
+    placeholders = ", ".join("?" for _ in game_ids)
+    connection.execute(f"DELETE FROM positions WHERE game_id IN ({placeholders})", game_ids)
+    connection.execute(f"DELETE FROM games WHERE id IN ({placeholders})", game_ids)
+    connection.commit()
+
+
+def renumber_games(connection: sqlite3.Connection, updates: list[dict[str, int]]) -> None:
+    if not updates:
+        return
+    connection.executemany(
+        """
+        UPDATE games
+        SET game_number = :new_game_number, source_line = :new_source_line
+        WHERE game_number = :old_game_number
+        """,
+        updates,
+    )
+    connection.commit()
+
+
 def replace_games(
     connection: sqlite3.Connection,
     parsed_games: Iterable[tuple[dict, list[dict[str, object]]]],

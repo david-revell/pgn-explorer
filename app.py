@@ -11,9 +11,9 @@ import streamlit as st
 from import_pgn import DEFAULT_PGN_PATH, import_archive
 from src.aliases import load_alias_table, resolve_player_aliases
 from src.config import APP_CONFIG
-from src.db import DEFAULT_DB_PATH, database_has_required_schema, get_connection, initialize_database
+from src.db import DEFAULT_DB_PATH, database_has_required_schema, delete_games, get_connection, initialize_database, renumber_games
 from src.move_text import parse_move_text
-from src.pgn_source import get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
+from src.pgn_source import delete_games_from_pgn, get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
 from src.queries import (
     load_data_review_counts,
     load_data_review_games,
@@ -495,16 +495,101 @@ _GAME_TABLE_COLUMN_CONFIG = {
 }
 
 
-def _render_game_detail_only(connection, games_df: pd.DataFrame) -> None:
-    if games_df.empty:
-        st.info("No games matched the current filters.")
+def _execute_deletion(connection, game_ids: list[int], game_numbers: list[int]) -> None:
+    n = len(game_ids)
+    delete_games(connection, game_ids)
+
+    if DEFAULT_PGN_PATH.exists() and APP_CONFIG.allow_pgn_writes:
+        try:
+            source_session = _load_or_get_pgn_session()
+            new_session, renumber_updates = delete_games_from_pgn(source_session, set(game_numbers))
+            st.session_state["pgn_source_session"] = new_session
+            renumber_games(connection, renumber_updates)
+            st.session_state["review_delete_status"] = f"Deleted {n} game(s). PGN and database updated."
+        except (OSError, RuntimeError) as exc:
+            st.session_state["review_delete_status"] = (
+                f"Deleted {n} game(s) from the database, but PGN update failed: {exc}"
+            )
+    else:
+        st.session_state["review_delete_status"] = f"Deleted {n} game(s) from the database."
+
+    st.cache_data.clear()
+
+
+def _render_review_games_with_deletion(connection, review_df: pd.DataFrame, review_type: str) -> None:
+    status = st.session_state.pop("review_delete_status", "")
+    if status:
+        st.success(status)
+
+    pending_delete = st.session_state.get("review_pending_delete")
+    if pending_delete is not None and pending_delete.get("review_type") != review_type:
+        st.session_state.pop("review_pending_delete")
+        pending_delete = None
+
+    export_columns = st.columns([1, 1, 6])
+    export_columns[0].download_button(
+        "Export CSV",
+        data=review_df.drop(columns=["id"]).to_csv(index=False),
+        file_name="games_export.csv",
+        mime="text/csv",
+    )
+    export_columns[1].download_button(
+        "Export PGN",
+        data=load_pgn_export(connection, review_df["id"].tolist()),
+        file_name="games_export.pgn",
+        mime="application/x-chess-pgn",
+    )
+
+    if pending_delete is not None:
+        n = len(pending_delete["ids"])
+        st.warning(f"Permanently delete {n} game(s)? This will update the PGN source and cannot be undone.")
+        confirm_col, cancel_col, _ = st.columns([1, 1, 4])
+        if confirm_col.button("Confirm delete", key="confirm_delete_btn"):
+            _execute_deletion(connection, pending_delete["ids"], pending_delete["game_numbers"])
+            st.session_state.pop("review_pending_delete")
+            st.rerun()
+        if cancel_col.button("Cancel", key="cancel_delete_btn"):
+            st.session_state.pop("review_pending_delete")
+            st.rerun()
         return
 
-    display_df = games_df.drop(columns=["id"])
-    event = st.dataframe(display_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", column_config=_GAME_TABLE_COLUMN_CONFIG)
+    if review_df.empty:
+        st.info(f"No games are currently in the `{review_type}` queue.")
+        return
+
+    display_df = review_df.drop(columns=["id"])
+    event = st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="multi-row",
+        column_config=_GAME_TABLE_COLUMN_CONFIG,
+        key="review_game_table",
+    )
     selected_rows = event.selection.rows
+
     if selected_rows:
-        game_id = int(games_df.iloc[selected_rows[0]]["id"])
+        selected_ids = [int(review_df.iloc[i]["id"]) for i in selected_rows]
+        selected_game_numbers = [int(review_df.iloc[i]["game_number"]) for i in selected_rows]
+        n = len(selected_ids)
+        delete_disabled = not APP_CONFIG.allow_pgn_writes
+        delete_help = "PGN write-back is disabled in the current app mode." if delete_disabled else None
+        if st.button(
+            f"Delete {n} selected game(s)",
+            key="delete_selected_btn",
+            disabled=delete_disabled,
+            help=delete_help,
+        ):
+            st.session_state["review_pending_delete"] = {
+                "ids": selected_ids,
+                "game_numbers": selected_game_numbers,
+                "review_type": review_type,
+            }
+            st.rerun()
+
+    if len(selected_rows) == 1:
+        game_id = int(review_df.iloc[selected_rows[0]]["id"])
         selected_game = load_game_by_id(connection, game_id)
         if selected_game is not None:
             render_game_with_board(dict(selected_game))
@@ -789,7 +874,7 @@ def render_data_review(connection) -> None:
 
     with st.sidebar:
         st.header("Data review")
-        review_type = st.selectbox("Queue", queue_options, index=queue_options.index("Duplicate games"), key="data_review_queue")
+        review_type = st.selectbox("Queue", queue_options, index=queue_options.index("Short games"), key="data_review_queue")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25, key="data_review_limit")
         if review_type == "Short games":
             short_game_ply = st.number_input("Max ply", min_value=1, max_value=20, value=3, step=1)
@@ -807,13 +892,9 @@ def render_data_review(connection) -> None:
 
     review_df = load_data_review_games(connection, review_type=review_type, limit=limit, short_game_ply=short_game_ply)
     st.markdown(f"**{review_type} games**")
-    if review_df.empty:
-        st.info(f"No games are currently in the `{review_type}` queue.")
-    elif review_type == "Missing ECO":
+    if review_type == "Missing ECO" and not review_df.empty:
         _render_missing_eco_editor(review_df)
-        _render_game_detail_only(connection, review_df)
-    else:
-        render_game_list_and_detail(connection, review_df)
+    _render_review_games_with_deletion(connection, review_df, review_type)
 
     alias_df = load_alias_table()
     if not alias_df.empty:

@@ -42,6 +42,38 @@ def load_pgn_source_session(pgn_path: Path | str) -> PgnSourceSession:
     )
 
 
+def delete_games_from_pgn(
+    session: PgnSourceSession,
+    game_numbers_to_delete: set[int],
+) -> tuple[PgnSourceSession, list[dict[str, int]]]:
+    """Remove games from the PGN file and return the updated session with a renumbering map.
+
+    Returns (new_session, renumber_updates) where renumber_updates is a list of dicts
+    with keys old_game_number, new_game_number, new_source_line for each surviving game.
+    Raises RuntimeError if the file has changed since the session was loaded.
+    """
+    current_text = session.path.read_text(encoding="utf-8", errors="replace")
+    if _hash_text(current_text) != session.file_hash:
+        raise RuntimeError("The PGN source changed outside the app. Reload before deleting.")
+
+    surviving_chunks = [c for c in session.chunks if c.game_number not in game_numbers_to_delete]
+    old_game_numbers = [c.game_number for c in surviving_chunks]
+
+    updated_text = "\n\n".join(c.text.strip() for c in surviving_chunks if c.text.strip()) + "\n"
+    session.path.write_text(updated_text, encoding="utf-8", newline="\n")
+
+    new_session = load_pgn_source_session(session.path)
+    renumber_updates = [
+        {
+            "old_game_number": old_gn,
+            "new_game_number": new_chunk.game_number,
+            "new_source_line": new_chunk.start_line,
+        }
+        for old_gn, new_chunk in zip(old_game_numbers, new_session.chunks)
+    ]
+    return new_session, renumber_updates
+
+
 def save_eco_updates(
     session: PgnSourceSession,
     eco_updates: dict[int, str],
