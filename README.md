@@ -280,6 +280,14 @@ Fully missing dates sort last.
 6. Rerun the importer for the active mode
 7. Refresh the app and repeat until the counts are clean
 
+## Limitations
+
+These were considered or tried and decided against:
+
+- **Interactive piece movement** — dragging or clicking pieces on the board to make moves requires a custom JavaScript/React component. Streamlit's board rendering is a static SVG with no bidirectional communication, so this would be a significant build rather than a configuration change.
+- **Mobile-friendly layout** — Streamlit's column layout does not reflow on narrow viewports, and the board renders at a fixed size. The app works well on desktop and large tablets in landscape; phones and portrait tablets are not supported.
+- **Move list with click-to-position** — a scrollable move list beside the board with clickable moves was implemented but reverted. Streamlit renders one button per move, which for a typical 60-move game means ~120 widgets and makes the page noticeably slow.
+
 ## Scope
 
 - Import PGN games into a local SQLite database
