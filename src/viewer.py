@@ -252,3 +252,63 @@ def render_board(board: chess.Board, last_move: chess.Move | None = None, size: 
 def render_game_summary(game: dict) -> None:
     st.subheader(f"{game['white']} vs {game['black']}")
     st.code(game["pgn_text"], language="pgn")
+
+
+def render_game_with_board(game: dict, size: int = 400) -> None:
+    st.subheader(f"{game['white']} vs {game['black']}")
+
+    game_id = int(game["id"])
+    moves_san = game.get("moves_san") or ""
+    tokens = moves_san.strip().split() if moves_san.strip() else []
+    total_ply = len(tokens)
+
+    ply_key = f"game_board_ply_{game_id}"
+    if st.session_state.get("game_board_last_id") != game_id:
+        st.session_state[ply_key] = 0
+        st.session_state["game_board_last_id"] = game_id
+
+    current_ply = st.session_state.get(ply_key, 0)
+
+    nav_cols = st.columns([1, 1, 1, 1, 8])
+    if nav_cols[0].button("<<", key=f"gbrd_start_{game_id}", disabled=current_ply == 0):
+        st.session_state[ply_key] = 0
+        st.rerun()
+    if nav_cols[1].button("<", key=f"gbrd_back_{game_id}", disabled=current_ply == 0):
+        st.session_state[ply_key] = max(0, current_ply - 1)
+        st.rerun()
+    if nav_cols[2].button(">", key=f"gbrd_fwd_{game_id}", disabled=current_ply >= total_ply):
+        st.session_state[ply_key] = min(total_ply, current_ply + 1)
+        st.rerun()
+    if nav_cols[3].button(">>", key=f"gbrd_end_{game_id}", disabled=current_ply >= total_ply):
+        st.session_state[ply_key] = total_ply
+        st.rerun()
+
+    board, last_move = build_board_from_san_sequence(tuple(tokens[:current_ply]))
+    render_board(board, last_move=last_move, size=size)
+
+    components.html(
+        """
+        <script>
+        (function() {
+            var doc = window.parent.document;
+            if (doc._gameBoardArrowListener) return;
+            doc._gameBoardArrowListener = true;
+            doc.addEventListener('keydown', function(e) {
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                e.preventDefault();
+                var target = e.key === 'ArrowLeft' ? '<' : '>';
+                var buttons = doc.querySelectorAll('button');
+                for (var b of buttons) {
+                    if (b.innerText.trim() === target && !b.disabled) {
+                        b.click();
+                        return;
+                    }
+                }
+            });
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+    st.code(game["pgn_text"], language="pgn")

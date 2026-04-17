@@ -140,6 +140,7 @@ The `Opening explorer` currently includes:
 - a narrow control strip with rotate, back, and reset actions
 - a position-based move breakdown panel beside the board
 - a position-based matching-games list under the board row
+- clicking a row in the matching-games list loads that game on a board with `<<` `<` `>` `>>` navigation and left/right arrow key support
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
 - an optional sidebar FEN seed, so exploration can start from any directly entered position
 
@@ -236,14 +237,18 @@ The sidebar uses British English in user-facing labels, for example `Colour`.
 
 ## Data Review
 
-The `Data review` page currently has these queues:
+The `Data review` page currently has these queues (shown alphabetically, defaulting to `Duplicate games`):
 
+- `Duplicate games`: games with identical players, date, and move sequence — grouped in pairs so duplicates appear side by side. The `site` column helps confirm whether two entries are genuinely the same game.
 - `Missing date`: blank dates or `????.??.??`
 - `Missing ECO`: games with no ECO code
+- `Short games`: games at or below a configurable ply threshold (default 3), adjustable via a sidebar input
+
+Clicking a row in any queue loads that game on a board with full move navigation.
 
 This page is intended as a review queue rather than an automatic cleanup step.
 
-For `Missing ECO`, the app now includes a batch editor:
+For `Missing ECO`, the app includes a batch editor:
 
 - stage ECO values for many games in Streamlit
 - save those ECO tags back to the active PGN source
@@ -277,10 +282,9 @@ Fully missing dates sort last.
 
 ## Scope
 
-Current first version:
-
 - Import PGN games into a local SQLite database
 - Search and filter games in Streamlit
-- View the current opening position on a board while exploring moves
+- Explore openings position by position on a board, with transposition awareness and opening labels
+- Click any game in a list to load it on a board and step through the moves
+- Detect duplicate games and short games via dedicated review queues
 - Edit missing ECO tags in batches and write them back to the active PGN source when writes are enabled
-- View the selected game's PGN directly

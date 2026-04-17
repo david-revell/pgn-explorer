@@ -36,6 +36,7 @@ from src.viewer import (
     render_clickable_move_summary,
     render_board,
     render_game_summary,
+    render_game_with_board,
     render_player_summary,
     render_quality_summary,
 )
@@ -488,23 +489,25 @@ def _render_missing_eco_editor(review_df: pd.DataFrame) -> None:
             )
 
 
+_GAME_TABLE_COLUMN_CONFIG = {
+    "game_number": st.column_config.NumberColumn("game_no", width="small"),
+    "source_line": st.column_config.NumberColumn("source_line", width="small"),
+}
+
+
 def _render_game_detail_only(connection, games_df: pd.DataFrame) -> None:
     if games_df.empty:
         st.info("No games matched the current filters.")
         return
 
-    options = {
-        (
-            f"game {row.game_number} | line {row.source_line} | "
-            f"{row.date} | {row.white} vs {row.black} | {row.result}"
-        ): int(row.id)
-        for row in games_df.itertuples(index=False)
-    }
-    selected_label = st.selectbox("Select a game", list(options.keys()))
-    selected_game = load_game_by_id(connection, options[selected_label])
-
-    if selected_game is not None:
-        render_game_summary(dict(selected_game))
+    display_df = games_df.drop(columns=["id"])
+    event = st.dataframe(display_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", column_config=_GAME_TABLE_COLUMN_CONFIG)
+    selected_rows = event.selection.rows
+    if selected_rows:
+        game_id = int(games_df.iloc[selected_rows[0]]["id"])
+        selected_game = load_game_by_id(connection, game_id)
+        if selected_game is not None:
+            render_game_with_board(dict(selected_game))
 
 
 def render_opening_explorer(connection) -> None:
@@ -766,33 +769,27 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
         mime="application/x-chess-pgn",
     )
 
-    st.dataframe(games_df.drop(columns=["id"]), use_container_width=True, hide_index=True)
-
     if games_df.empty:
         st.info("No games matched the current filters.")
         return
 
-    options = {
-        (
-            f"game {row.game_number} | line {row.source_line} | "
-            f"{row.date} | {row.white} vs {row.black} | {row.result}"
-        ): int(row.id)
-        for row in games_df.itertuples(index=False)
-    }
-    selected_label = st.selectbox("Select a game", list(options.keys()))
-    selected_game = load_game_by_id(connection, options[selected_label])
-
-    if selected_game is not None:
-        render_game_summary(dict(selected_game))
+    display_df = games_df.drop(columns=["id"])
+    event = st.dataframe(display_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", column_config=_GAME_TABLE_COLUMN_CONFIG)
+    selected_rows = event.selection.rows
+    if selected_rows:
+        game_id = int(games_df.iloc[selected_rows[0]]["id"])
+        selected_game = load_game_by_id(connection, game_id)
+        if selected_game is not None:
+            render_game_with_board(dict(selected_game))
 
 
 def render_data_review(connection) -> None:
     data_quality_counts = load_quality_counts(connection, PLAYER_USERNAMES)
-    queue_options = ["Missing date", "Missing ECO", "Duplicate games", "Short games"]
+    queue_options = sorted(["Missing date", "Missing ECO", "Duplicate games", "Short games"])
 
     with st.sidebar:
         st.header("Data review")
-        review_type = st.selectbox("Queue", queue_options, key="data_review_queue")
+        review_type = st.selectbox("Queue", queue_options, index=queue_options.index("Duplicate games"), key="data_review_queue")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25, key="data_review_limit")
         if review_type == "Short games":
             short_game_ply = st.number_input("Max ply", min_value=1, max_value=20, value=3, step=1)

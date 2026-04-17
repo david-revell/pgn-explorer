@@ -299,15 +299,17 @@ def load_data_review_counts(connection: sqlite3.Connection, short_game_ply: int 
         "Duplicate games": connection.execute(
             """
             SELECT COUNT(*)
-            FROM games
-            WHERE id IN (
-                SELECT id
-                FROM games
-                WHERE moves_san IS NOT NULL AND moves_san <> ''
-                  AND date IS NOT NULL AND TRIM(date) <> '' AND TRIM(date) <> '????.??.??'
-                GROUP BY white_norm, black_norm, date, moves_san
-                HAVING COUNT(*) > 1
-            )
+            FROM games g
+            WHERE g.moves_san IS NOT NULL AND g.moves_san <> ''
+              AND g.date IS NOT NULL AND TRIM(g.date) <> '' AND TRIM(g.date) <> '????.??.??'
+              AND EXISTS (
+                SELECT 1 FROM games g2
+                WHERE g2.id <> g.id
+                  AND g2.white_norm = g.white_norm
+                  AND g2.black_norm = g.black_norm
+                  AND g2.date = g.date
+                  AND g2.moves_san = g.moves_san
+              )
             """
         ).fetchone()[0],
         "Short games": connection.execute(
@@ -339,8 +341,8 @@ def load_data_review_games(
                 black,
                 result,
                 eco,
-                (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 AS ply,
-                'Short game' AS reason
+                site,
+                (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 AS ply
             FROM games
             WHERE moves_san IS NOT NULL AND moves_san <> ''
               AND (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 <= :ply
@@ -360,17 +362,19 @@ def load_data_review_games(
                 black,
                 result,
                 eco,
-                'Duplicate' AS reason
-            FROM games
-            WHERE id IN (
-                SELECT id
-                FROM games
-                WHERE moves_san IS NOT NULL AND moves_san <> ''
-                  AND date IS NOT NULL AND TRIM(date) <> '' AND TRIM(date) <> '????.??.??'
-                GROUP BY white_norm, black_norm, date, moves_san
-                HAVING COUNT(*) > 1
-            )
-            ORDER BY white_norm, black_norm, date, game_number
+                site
+            FROM games g
+            WHERE g.moves_san IS NOT NULL AND g.moves_san <> ''
+              AND g.date IS NOT NULL AND TRIM(g.date) <> '' AND TRIM(g.date) <> '????.??.??'
+              AND EXISTS (
+                SELECT 1 FROM games g2
+                WHERE g2.id <> g.id
+                  AND g2.white_norm = g.white_norm
+                  AND g2.black_norm = g.black_norm
+                  AND g2.date = g.date
+                  AND g2.moves_san = g.moves_san
+              )
+            ORDER BY white_norm, black_norm, date, moves_san, game_number
             LIMIT :limit
         """
         return pd.read_sql_query(query, connection, params={"limit": limit})
@@ -392,7 +396,7 @@ def load_data_review_games(
             black,
             result,
             eco,
-            {reason_sql} AS reason
+            site
         FROM games
         WHERE {where_sql}
         ORDER BY game_number DESC
