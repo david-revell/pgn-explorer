@@ -787,19 +787,20 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
 
 
 def render_data_review(connection) -> None:
-    data_review_counts = load_data_review_counts(connection)
     data_quality_counts = load_quality_counts(connection, PLAYER_USERNAMES)
-    queue_options = ["Missing date", "Missing ECO"]
-    default_queue = "Missing date"
-    for queue_name in queue_options:
-        if data_review_counts[queue_name] > 0:
-            default_queue = queue_name
-            break
+    queue_options = ["Missing date", "Missing ECO", "Duplicate games", "Short games"]
 
     with st.sidebar:
         st.header("Data review")
-        review_type = st.selectbox("Queue", queue_options, index=queue_options.index(default_queue))
+        review_type = st.selectbox("Queue", queue_options, key="data_review_queue")
         limit = st.slider("Max rows", min_value=25, max_value=500, value=200, step=25, key="data_review_limit")
+        if review_type == "Short games":
+            short_game_ply = st.number_input("Max ply", min_value=1, max_value=20, value=3, step=1)
+        else:
+            short_game_ply = 3
+
+    data_review_counts = load_data_review_counts(connection, short_game_ply=short_game_ply)
+    data_review_counts[f"Short games ({short_game_ply} ply)"] = data_review_counts.pop("Short games")
 
     st.subheader("Critical issues")
     render_quality_summary(data_quality_counts)
@@ -807,7 +808,7 @@ def render_data_review(connection) -> None:
     st.subheader("Data quality")
     render_quality_summary(data_review_counts)
 
-    review_df = load_data_review_games(connection, review_type=review_type, limit=limit)
+    review_df = load_data_review_games(connection, review_type=review_type, limit=limit, short_game_ply=short_game_ply)
     st.markdown(f"**{review_type} games**")
     if review_df.empty:
         st.info(f"No games are currently in the `{review_type}` queue.")

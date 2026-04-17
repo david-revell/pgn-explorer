@@ -280,7 +280,7 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
     return counts
 
 
-def load_data_review_counts(connection: sqlite3.Connection) -> dict[str, int]:
+def load_data_review_counts(connection: sqlite3.Connection, short_game_ply: int = 3) -> dict[str, int]:
     return {
         "Missing date": connection.execute(
             """
@@ -296,6 +296,29 @@ def load_data_review_counts(connection: sqlite3.Connection) -> dict[str, int]:
             WHERE eco IS NULL OR TRIM(eco) = ''
             """
         ).fetchone()[0],
+        "Duplicate games": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM games
+            WHERE id IN (
+                SELECT id
+                FROM games
+                WHERE moves_san IS NOT NULL AND moves_san <> ''
+                  AND date IS NOT NULL AND TRIM(date) <> '' AND TRIM(date) <> '????.??.??'
+                GROUP BY white_norm, black_norm, date, moves_san
+                HAVING COUNT(*) > 1
+            )
+            """
+        ).fetchone()[0],
+        "Short games": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM games
+            WHERE moves_san IS NOT NULL AND moves_san <> ''
+              AND (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 <= :ply
+            """,
+            {"ply": short_game_ply},
+        ).fetchone()[0],
     }
 
 
@@ -303,7 +326,55 @@ def load_data_review_games(
     connection: sqlite3.Connection,
     review_type: str,
     limit: int = 200,
+    short_game_ply: int = 3,
 ) -> pd.DataFrame:
+    if review_type == "Short games":
+        query = """
+            SELECT
+                id,
+                game_number,
+                source_line,
+                date,
+                white,
+                black,
+                result,
+                eco,
+                (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 AS ply,
+                'Short game' AS reason
+            FROM games
+            WHERE moves_san IS NOT NULL AND moves_san <> ''
+              AND (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 <= :ply
+            ORDER BY ply ASC, game_number DESC
+            LIMIT :limit
+        """
+        return pd.read_sql_query(query, connection, params={"ply": short_game_ply, "limit": limit})
+
+    if review_type == "Duplicate games":
+        query = """
+            SELECT
+                id,
+                game_number,
+                source_line,
+                date,
+                white,
+                black,
+                result,
+                eco,
+                'Duplicate' AS reason
+            FROM games
+            WHERE id IN (
+                SELECT id
+                FROM games
+                WHERE moves_san IS NOT NULL AND moves_san <> ''
+                  AND date IS NOT NULL AND TRIM(date) <> '' AND TRIM(date) <> '????.??.??'
+                GROUP BY white_norm, black_norm, date, moves_san
+                HAVING COUNT(*) > 1
+            )
+            ORDER BY white_norm, black_norm, date, game_number
+            LIMIT :limit
+        """
+        return pd.read_sql_query(query, connection, params={"limit": limit})
+
     if review_type == "Missing date":
         where_sql = "date IS NULL OR TRIM(date) = '' OR TRIM(date) = '????.??.??'"
         reason_sql = "'Missing date'"
