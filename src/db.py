@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS games (
     moves_san TEXT NOT NULL,
     pgn_text TEXT NOT NULL,
     final_opening_eco TEXT,
-    final_opening_name TEXT
+    final_opening_name TEXT,
+    keep INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -111,6 +112,7 @@ REQUIRED_COLUMNS = {
     "date_precision",
     "moves_san",
     "pgn_text",
+    "keep",
 }
 
 
@@ -183,12 +185,12 @@ def _insert_games_batch(
         INSERT INTO games (
             game_number, source_line, source_file, event, site, date, round, white, black, result, eco,
             white_elo, black_elo, ply_count, event_date, termination, time_control,
-            white_norm, black_norm, date_sort_key, date_precision, moves_san, pgn_text
+            white_norm, black_norm, date_sort_key, date_precision, moves_san, pgn_text, keep
         )
         VALUES (
             :game_number, :source_line, :source_file, :event, :site, :date, :round, :white, :black, :result, :eco,
             :white_elo, :black_elo, :ply_count, :event_date, :termination, :time_control,
-            :white_norm, :black_norm, :date_sort_key, :date_precision, :moves_san, :pgn_text
+            :white_norm, :black_norm, :date_sort_key, :date_precision, :moves_san, :pgn_text, :keep
         )
         """,
         games,

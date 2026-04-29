@@ -870,7 +870,7 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
 
 def render_data_review(connection) -> None:
     data_quality_counts = load_quality_counts(connection, PLAYER_USERNAMES)
-    queue_options = sorted(["Missing date", "Missing ECO", "Duplicate games", "Short games", "Missing moves", "Not my game"])
+    queue_options = sorted(["Missing date", "Missing ECO", "Duplicate games", "Short games", "Missing moves", "Not my game", "Whitelisted games"])
 
     with st.sidebar:
         st.header("Data review")
@@ -888,7 +888,7 @@ def render_data_review(connection) -> None:
     render_quality_summary(data_quality_counts)
 
     st.subheader("Data quality")
-    render_quality_summary(data_review_counts)
+    render_quality_summary(data_review_counts, neutral_labels={"Whitelisted games"})
 
     review_df = load_data_review_games(connection, review_type=review_type, limit=limit, short_game_ply=short_game_ply, usernames=PLAYER_USERNAMES)
     st.markdown(f"**{review_type} games**")

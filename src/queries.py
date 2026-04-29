@@ -282,6 +282,9 @@ def load_quality_counts(connection: sqlite3.Connection, usernames: str) -> dict[
 
 def load_data_review_counts(connection: sqlite3.Connection, short_game_ply: int = 3) -> dict[str, int]:
     return {
+        "Whitelisted games": connection.execute(
+            "SELECT COUNT(*) FROM games WHERE keep = 1"
+        ).fetchone()[0],
         "Missing date": connection.execute(
             """
             SELECT COUNT(*)
@@ -318,6 +321,7 @@ def load_data_review_counts(connection: sqlite3.Connection, short_game_ply: int 
             FROM games
             WHERE moves_san IS NOT NULL AND moves_san <> ''
               AND (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 <= :ply
+              AND keep = 0
             """,
             {"ply": short_game_ply},
         ).fetchone()[0],
@@ -380,10 +384,18 @@ def load_data_review_games(
             FROM games
             WHERE moves_san IS NOT NULL AND moves_san <> ''
               AND (LENGTH(TRIM(moves_san)) - LENGTH(REPLACE(TRIM(moves_san), ' ', ''))) + 1 <= :ply
+              AND keep = 0
             ORDER BY ply ASC, game_number DESC
             LIMIT :limit
         """
         return pd.read_sql_query(query, connection, params={"ply": short_game_ply, "limit": limit})
+
+    if review_type == "Whitelisted games":
+        return pd.read_sql_query(
+            base_select + "WHERE keep = 1 ORDER BY date_sort_key DESC, game_number DESC LIMIT :limit",
+            connection,
+            params={"limit": limit},
+        )
 
     if review_type == "Duplicate games":
         query = """

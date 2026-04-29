@@ -129,10 +129,13 @@ def _render_result_bar(white: int, draw: int, black: int) -> str:
     )
 
 
-def render_quality_summary(counts: dict[str, int]) -> None:
+def render_quality_summary(counts: dict[str, int], neutral_labels: set[str] | None = None) -> None:
     columns = st.columns(len(counts))
     for column, (label, value) in zip(columns, counts.items()):
-        colour = "#2e7d32" if value == 0 else "#c62828"
+        if neutral_labels and label in neutral_labels:
+            colour = "#555555"
+        else:
+            colour = "#2e7d32" if value == 0 else "#c62828"
         column.markdown(
             (
                 f"{label}: "

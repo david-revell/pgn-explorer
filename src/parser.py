@@ -189,6 +189,7 @@ def iter_parsed_games(
                 "date_precision": date_precision,
                 "moves_san": " ".join(san_moves),
                 "pgn_text": pgn_text,
+                "keep": 1 if headers.get("Keep") == "1" else 0,
             },
             position_rows,
         )

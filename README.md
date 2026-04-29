@@ -247,7 +247,10 @@ The `Data review` page currently has these queues (shown alphabetically, default
 - `Duplicate games`: games with identical players, date, and move sequence — grouped in pairs so duplicates appear side by side. The `site` column helps confirm whether two entries are genuinely the same game.
 - `Missing date`: blank dates or `????.??.??`
 - `Missing ECO`: games with no ECO code
-- `Short games`: games at or below a configurable ply threshold (default 3), adjustable via a sidebar input
+- `Missing moves`: games where no move text was imported (also shown in Critical issues)
+- `Not my game`: games where neither White nor Black matches one of your usernames (also shown in Critical issues)
+- `Short games`: games at or below a configurable ply threshold (default 3), adjustable via a sidebar input — whitelisted games are excluded from this queue
+- `Whitelisted games`: games explicitly marked with `[Keep "1"]` in the PGN source
 
 Clicking a row in any queue loads that game on a board with full move navigation.
 
@@ -260,6 +263,40 @@ For `Missing ECO`, the app includes a batch editor:
 - rebuild the database separately when you are ready
 
 This avoids a full rebuild after every single ECO change. Until you rebuild, the database-backed queue will still show the older ECO state.
+
+## Whitelisting games
+
+Some games are legitimately short or unusual but should be kept — for example, an over-the-board game that ended quickly, or a game recorded primarily as a journal entry. These would normally appear in the `Short games` review queue but should never be deleted.
+
+To whitelist a game, add `[Keep "1"]` as the last header line in that game's PGN entry, immediately before the blank line and move text:
+
+```pgn
+[Event "Outside M part of church, Taiz"]
+[Site "Outside M part of church, Taiz"]
+[Date "2005.04.13"]
+[Round "?"]
+[White "French Guy #2"]
+[Black "peletis"]
+[Result "0-1"]
+[ECO "A00"]
+[PlyCount "3"]
+[EventDate "2005.??.??"]
+[Keep "1"]
+
+{A00: Irregular Openings} 1. g3 e5 2. Bg2 0-1
+```
+
+The tag only needs to appear on games you want to protect — the vast majority of games need nothing. After editing the PGN, rerun the importer:
+
+```powershell
+python import_pgn.py --pgn pgn/all.pgn
+```
+
+Whitelisted games:
+
+- are excluded from the `Short games` queue
+- appear in the `Whitelisted games` queue on the `Data review` page, shown in grey (not red) since a non-zero count is expected and fine
+- are otherwise fully searchable and navigable throughout the app
 
 ## Recent Games Ordering
 
@@ -281,8 +318,9 @@ Fully missing dates sort last.
 2. Open `Data review`
 3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source, then rebuild the database
 4. To delete duplicate or short games, select them with the row checkboxes and confirm — the PGN and database are updated immediately, no rebuild needed
-5. For other fixes (e.g. correcting a date or result), note the `source_line`, edit the game directly in the PGN source, then rerun the importer
-6. Repeat until the counts are clean
+5. For short games you want to keep (journal entries, early resignations, etc.), add `[Keep "1"]` to the game in the PGN source and rerun the importer — see [Whitelisting games](#whitelisting-games)
+6. For other fixes (e.g. correcting a date or result), note the `source_line`, edit the game directly in the PGN source, then rerun the importer
+7. Repeat until the counts are clean
 
 ## Limitations
 
@@ -298,6 +336,7 @@ These were considered or tried and decided against:
 - Search and filter games in Streamlit
 - Explore openings position by position on a board, with transposition awareness and opening labels
 - Click any game in a list to load it on a board and step through the moves
-- Detect duplicate games and short games via dedicated review queues
+- Detect duplicate, short, missing-moves, and not-my-game entries via dedicated review queues
+- Whitelist games with `[Keep "1"]` in the PGN to protect them from the short-games queue
 - Delete games in-app from any review queue — updates the PGN source and database atomically, with automatic renumbering
 - Edit missing ECO tags in batches and write them back to the active PGN source when writes are enabled
