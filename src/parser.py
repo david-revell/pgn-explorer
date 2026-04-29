@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from io import StringIO
 from pathlib import Path
 from time import perf_counter
@@ -27,18 +28,38 @@ def _parse_int(value: str | None) -> int | None:
         return None
 
 
+_HEADER_RE = re.compile(r"^\s*\[[A-Z]")
+
+
 def _iter_game_chunks(pgn_path: Path) -> list[tuple[int, str]]:
+    """Split a PGN file into per-game text chunks.
+
+    Splits whenever a header line is seen after move text has started,
+    so games that lack an [Event] tag are still correctly separated.
+    Blank lines between a game's headers and its moves stay in the same
+    chunk so chess.pgn can parse them.
+    """
     chunks: list[tuple[int, str]] = []
     current_start_line: int | None = None
     current_lines: list[str] = []
+    saw_moves = False
 
     with pgn_path.open("r", encoding="utf-8", errors="replace") as handle:
         for line_number, line in enumerate(handle, start=1):
-            if line.startswith("[Event ") and current_lines:
-                chunks.append((current_start_line or line_number, "".join(current_lines).strip()))
+            is_header = bool(_HEADER_RE.match(line))
+            is_empty = not line.strip()
+
+            if is_header and saw_moves:
+                if current_lines:
+                    chunks.append((current_start_line or line_number, "".join(current_lines).strip()))
                 current_lines = []
                 current_start_line = line_number
-            elif current_start_line is None and line.strip():
+                saw_moves = False
+
+            if not is_header and not is_empty:
+                saw_moves = True
+
+            if current_start_line is None and line.strip():
                 current_start_line = line_number
 
             if current_start_line is not None:
@@ -55,7 +76,7 @@ def count_games_in_pgn(pgn_path: Path | str) -> int:
     count = 0
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line in handle:
-            if line.startswith("[Event "):
+            if line.startswith("[White "):
                 count += 1
     return count
 

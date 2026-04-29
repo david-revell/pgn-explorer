@@ -870,7 +870,7 @@ def render_game_list_and_detail(connection, games_df: pd.DataFrame) -> None:
 
 def render_data_review(connection) -> None:
     data_quality_counts = load_quality_counts(connection, PLAYER_USERNAMES)
-    queue_options = sorted(["Missing date", "Missing ECO", "Duplicate games", "Short games"])
+    queue_options = sorted(["Missing date", "Missing ECO", "Duplicate games", "Short games", "Missing moves", "Not my game"])
 
     with st.sidebar:
         st.header("Data review")
@@ -890,7 +890,7 @@ def render_data_review(connection) -> None:
     st.subheader("Data quality")
     render_quality_summary(data_review_counts)
 
-    review_df = load_data_review_games(connection, review_type=review_type, limit=limit, short_game_ply=short_game_ply)
+    review_df = load_data_review_games(connection, review_type=review_type, limit=limit, short_game_ply=short_game_ply, usernames=PLAYER_USERNAMES)
     st.markdown(f"**{review_type} games**")
     if review_type == "Missing ECO" and not review_df.empty:
         _render_missing_eco_editor(review_df)

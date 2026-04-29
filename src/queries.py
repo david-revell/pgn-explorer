@@ -329,7 +329,41 @@ def load_data_review_games(
     review_type: str,
     limit: int = 200,
     short_game_ply: int = 3,
+    usernames: str = "",
 ) -> pd.DataFrame:
+    base_select = """
+        SELECT
+            id,
+            game_number,
+            source_line,
+            date,
+            white,
+            black,
+            result,
+            eco,
+            site
+        FROM games
+    """
+
+    if review_type == "Missing moves":
+        return pd.read_sql_query(
+            base_select + "WHERE moves_san IS NULL OR moves_san = '' ORDER BY game_number DESC LIMIT :limit",
+            connection,
+            params={"limit": limit},
+        )
+
+    if review_type == "Not my game":
+        aliases = normalize_aliases(usernames)
+        clauses: list[str] = []
+        params: dict[str, object] = {"limit": limit}
+        _append_not_my_game_clause(clauses, params, aliases)
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else "WHERE 1 = 0"
+        return pd.read_sql_query(
+            base_select + where_sql + " ORDER BY game_number DESC LIMIT :limit",
+            connection,
+            params=params,
+        )
+
     if review_type == "Short games":
         query = """
             SELECT
