@@ -880,6 +880,12 @@ def render_data_review(connection) -> None:
             short_game_ply = st.number_input("Max ply", min_value=1, max_value=20, value=3, step=1)
         else:
             short_game_ply = 3
+        if APP_CONFIG.allow_pgn_writes:
+            st.divider()
+            if st.button("Rebuild database", key="rebuild_db"):
+                st.session_state["rebuilding_db"] = True
+                st.rerun()
+            st.caption(f"Rebuilds from `{DEFAULT_PGN_PATH.name}`")
 
     data_review_counts = load_data_review_counts(connection, short_game_ply=short_game_ply)
     data_review_counts[f"Short games ({short_game_ply} ply)"] = data_review_counts.pop("Short games")
@@ -947,6 +953,26 @@ def main() -> None:
     if page == "Data review":
         st.title("Data review")
     st.caption(f"Mode: `{APP_CONFIG.mode}` | PGN: `{DEFAULT_PGN_PATH}` | DB: `{DEFAULT_DB_PATH}`")
+
+    if st.session_state.pop("rebuilding_db", False) and APP_CONFIG.allow_pgn_writes:
+        if not DEFAULT_PGN_PATH.exists():
+            st.error(f"PGN file not found: {DEFAULT_PGN_PATH}")
+            st.stop()
+        with st.status(f"Rebuilding from {DEFAULT_PGN_PATH.name}...", expanded=True) as status:
+            progress_bar = st.progress(0.0)
+
+            def _on_rebuild_progress(parsed: int, total: int | None, elapsed: float) -> None:
+                if total:
+                    progress_bar.progress(min(parsed / total, 1.0), text=f"{parsed:,} / {total:,} games ({elapsed:.0f}s)")
+
+            n = import_archive(DEFAULT_PGN_PATH, DEFAULT_DB_PATH, progress_callback=_on_rebuild_progress)
+            status.update(label=f"Done — {n:,} games imported.", state="complete")
+        st.session_state["rebuild_complete"] = f"Database rebuilt — {n:,} games imported from {DEFAULT_PGN_PATH.name}."
+        st.cache_data.clear()
+        st.rerun()
+
+    if msg := st.session_state.pop("rebuild_complete", None):
+        st.success(msg)
 
     db_exists = DEFAULT_DB_PATH.exists()
 

@@ -88,7 +88,7 @@ python import_pgn.py
 
 During import, progress is printed to the terminal.
 
-If you edit games in `pgn/all.pgn`, rerun the importer so the database matches the source again. Games can also be deleted directly in the app from the `Data review` page — that updates both the PGN and the database in one step with no rebuild required.
+If you edit games in `pgn/all.pgn`, rebuild the database so it matches the source again. The fastest way is the **Rebuild database** button at the bottom of the `Data review` sidebar — it runs the same import with a progress bar and refreshes the app when done. The CLI commands above work equally well if you prefer the terminal. Games deleted directly in the app from the `Data review` page update both the PGN and the database in one step with no rebuild required.
 
 Start the app:
 
@@ -120,8 +120,8 @@ python import_pgn.py
 
 Then commit `pgn/public_anonymised.pgn`, `data/public_games.db`, and
 `streamlit_app.py`, and deploy that file on Community Cloud. In that deployed
-mode, the app is intentionally read-only: PGN write-back and in-app database
-rebuild are both disabled.
+mode, the app is intentionally read-only: PGN write-back, in-app deletion, and
+the in-app database rebuild button are all disabled.
 
 Local-only Windows launchers can also be kept at repo root:
 
@@ -133,7 +133,7 @@ These are intentionally ignored by git.
 The app currently has two pages:
 
 - `Opening explorer`: explore openings, filter games, drill into positions move by move, and seed exploration from a direct FEN
-- `Data review`: review games with targeted cleanup queues, with in-app deletion and batch ECO editing
+- `Data review`: review games with targeted cleanup queues, with in-app deletion, batch ECO editing, and a one-click database rebuild
 
 The `Opening explorer` currently includes:
 
@@ -262,13 +262,13 @@ For `Missing ECO`, the app includes a batch editor:
 - save those ECO tags back to the active PGN source
 - rebuild the database separately when you are ready
 
-This avoids a full rebuild after every single ECO change. Until you rebuild, the database-backed queue will still show the older ECO state.
+This avoids a full rebuild after every single ECO change. Until you rebuild, the database-backed queue will still show the older ECO state. Use the **Rebuild database** button in the sidebar (or the CLI importer) when you are ready to apply the changes.
 
 ## Whitelisting games
 
 Some games are legitimately short or unusual but should be kept — for example, an over-the-board game that ended quickly, or a game recorded primarily as a journal entry. These would normally appear in the `Short games` review queue but should never be deleted.
 
-To whitelist a game, add `[Keep "1"]` as the last header line in that game's PGN entry, immediately before the blank line and move text:
+To whitelist a game, add `[Keep "1"]` as the last header line in that game's PGN entry, immediately before the blank line and move text, then rebuild the database (button in the `Data review` sidebar, or via the CLI):
 
 ```pgn
 [Event "Outside M part of church, Taiz"]
@@ -286,7 +286,7 @@ To whitelist a game, add `[Keep "1"]` as the last header line in that game's PGN
 {A00: Irregular Openings} 1. g3 e5 2. Bg2 0-1
 ```
 
-The tag only needs to appear on games you want to protect — the vast majority of games need nothing. After editing the PGN, rerun the importer:
+The tag only needs to appear on games you want to protect — the vast majority of games need nothing. After editing the PGN, rebuild the database using the **Rebuild database** button in the `Data review` sidebar, or from the terminal:
 
 ```powershell
 python import_pgn.py --pgn pgn/all.pgn
@@ -316,10 +316,10 @@ Fully missing dates sort last.
 
 1. Run `streamlit run app.py`
 2. Open `Data review`
-3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source, then rebuild the database
+3. For missing ECOs, stage one or more ECO edits in the batch editor and save them to the active PGN source, then click **Rebuild database** in the sidebar
 4. To delete duplicate or short games, select them with the row checkboxes and confirm — the PGN and database are updated immediately, no rebuild needed
-5. For short games you want to keep (journal entries, early resignations, etc.), add `[Keep "1"]` to the game in the PGN source and rerun the importer — see [Whitelisting games](#whitelisting-games)
-6. For other fixes (e.g. correcting a date or result), note the `source_line`, edit the game directly in the PGN source, then rerun the importer
+5. For short games you want to keep (journal entries, early resignations, etc.), add `[Keep "1"]` to the game in the PGN source and click **Rebuild database** — see [Whitelisting games](#whitelisting-games)
+6. For other fixes (e.g. correcting a date or result), note the `source_line`, edit the game directly in the PGN source, then click **Rebuild database** (or run `python import_pgn.py --pgn pgn/all.pgn` from the terminal)
 7. Repeat until the counts are clean
 
 ## Limitations
