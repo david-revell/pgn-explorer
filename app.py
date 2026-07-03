@@ -11,7 +11,16 @@ import streamlit as st
 from import_pgn import DEFAULT_PGN_PATH, import_archive
 from src.aliases import load_alias_table, resolve_player_aliases
 from src.config import APP_CONFIG
-from src.db import DEFAULT_DB_PATH, database_has_required_schema, delete_games, get_connection, initialize_database, renumber_games
+from src.db import (
+    DEFAULT_DB_PATH,
+    database_has_required_schema,
+    delete_games,
+    delete_move_evaluation,
+    get_connection,
+    initialize_database,
+    renumber_games,
+    upsert_move_evaluation,
+)
 from src.move_text import parse_move_text
 from src.pgn_source import delete_games_from_pgn, get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
 from src.queries import (
@@ -20,6 +29,7 @@ from src.queries import (
     load_game_by_id,
     load_games,
     load_games_by_position,
+    load_move_evaluations_by_position,
     load_move_summary_by_position,
     load_move_summary,
     load_next_moves_by_position,
@@ -30,7 +40,7 @@ from src.queries import (
     load_player_summary_by_position,
     load_quality_counts,
 )
-from src.positions import build_position_history, build_position_key
+from src.positions import build_position_history, build_position_key, normalize_fen
 from src.viewer import (
     build_board_from_san_sequence,
     format_position_label,
@@ -200,6 +210,25 @@ def _load_games_by_position_cached(
             usernames=usernames,
             limit=limit,
         )
+
+
+@st.cache_data(show_spinner=False)
+def _load_move_evaluations_by_position_cached(
+    _db_version: int,
+    fen: str,
+) -> dict[str, str]:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_move_evaluations_by_position(connection, fen)
+
+
+def _on_move_evaluation_change(position_key: str, move_san: str, session_key: str) -> None:
+    value = st.session_state[session_key].strip()
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        if value:
+            upsert_move_evaluation(connection, position_key, move_san, value)
+        else:
+            delete_move_evaluation(connection, position_key, move_san)
+    st.cache_data.clear()
 
 
 @st.cache_data(show_spinner=False)
@@ -805,15 +834,33 @@ def render_opening_explorer(connection) -> None:
                     result,
                     opening,
                 )
+                move_evaluations = _load_move_evaluations_by_position_cached(db_version, current_fen)
             else:
                 move_summary_df = pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
+                move_evaluations = {}
 
             selected_move = render_clickable_move_summary(
                 move_summary_df,
                 ply_index=current_ply_index,
                 key_prefix=f"position_move_{current_ply_index}_{color}_{player}_{result}_{opening}_{active_seed_fen}",
                 show_move_prefix=False,
+                evaluations=move_evaluations,
             )
+
+        if not move_summary_df.empty:
+            position_key = normalize_fen(current_fen)
+            with st.expander("Edit move evaluations"):
+                for row in move_summary_df.itertuples(index=False):
+                    move_san = str(row.move)
+                    eval_key = f"move_eval_{position_key}_{move_san}"
+                    if eval_key not in st.session_state:
+                        st.session_state[eval_key] = move_evaluations.get(move_san, "")
+                    st.text_input(
+                        move_san,
+                        key=eval_key,
+                        on_change=_on_move_evaluation_change,
+                        args=(position_key, move_san, eval_key),
+                    )
     entered_move_text = st.text_input(
         "Current line",
         value=st.session_state.get("opening_move_text", current_move_text),

@@ -67,6 +67,17 @@ CREATE TABLE IF NOT EXISTS opening_positions (
 """
 
 
+CREATE_MOVE_EVALUATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS move_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_key TEXT NOT NULL,
+    move_san TEXT NOT NULL,
+    evaluation TEXT NOT NULL,
+    UNIQUE (position_key, move_san)
+);
+"""
+
+
 INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_games_game_number ON games (game_number)",
     "CREATE INDEX IF NOT EXISTS idx_games_source_line ON games (source_line)",
@@ -84,6 +95,7 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_positions_game_ply ON positions (game_id, ply)",
     "CREATE INDEX IF NOT EXISTS idx_opening_positions_position_key ON opening_positions (position_key)",
     "CREATE INDEX IF NOT EXISTS idx_opening_positions_eco ON opening_positions (eco)",
+    "CREATE INDEX IF NOT EXISTS idx_move_evaluations_position_key ON move_evaluations (position_key)",
 ]
 
 
@@ -163,6 +175,7 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     connection.execute(CREATE_TABLE_SQL)
     connection.execute(CREATE_POSITIONS_TABLE_SQL)
     connection.execute(CREATE_OPENING_POSITIONS_TABLE_SQL)
+    connection.execute(CREATE_MOVE_EVALUATIONS_TABLE_SQL)
     if not database_has_required_schema(connection):
         connection.commit()
         return
@@ -336,6 +349,31 @@ def update_final_openings(connection: sqlite3.Connection) -> None:
                 LIMIT 1
             )
         """
+    )
+    connection.commit()
+
+
+def upsert_move_evaluation(
+    connection: sqlite3.Connection,
+    position_key: str,
+    move_san: str,
+    evaluation: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO move_evaluations (position_key, move_san, evaluation)
+        VALUES (?, ?, ?)
+        ON CONFLICT (position_key, move_san) DO UPDATE SET evaluation = excluded.evaluation
+        """,
+        (position_key, move_san, evaluation),
+    )
+    connection.commit()
+
+
+def delete_move_evaluation(connection: sqlite3.Connection, position_key: str, move_san: str) -> None:
+    connection.execute(
+        "DELETE FROM move_evaluations WHERE position_key = ? AND move_san = ?",
+        (position_key, move_san),
     )
     connection.commit()
 

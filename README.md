@@ -141,7 +141,7 @@ The `Opening explorer` currently includes:
 - a board for the current position
 - an opening label showing `ECO + name`, with the reference opening PGN line directly underneath
 - a narrow control strip with rotate, back, and reset actions
-- a position-based move breakdown panel beside the board
+- a position-based move breakdown panel beside the board, with an editable per-move evaluation column (e.g. `+0.3`, `=`, `±`)
 - a position-based matching-games list under the board row
 - clicking a row in the matching-games list loads that game on a board with `<<` `<` `>` `>>` navigation and left/right arrow key support
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
@@ -192,6 +192,14 @@ The opening explorer now runs on precomputed position data rather than only a li
 - the colour summary, move breakdown, and matching-games sections all query by position, so the explorer is fully transposition-aware
 - opening reference data is imported separately into `opening_positions`, allowing the current position to resolve to an opening name by position instead of by ECO alone
 - opening lookup falls back to the most recent named position in the current explored line, so the label persists after unnamed continuation moves
+
+## Move evaluations
+
+Hand-entered evaluations (e.g. `+0.3`, `=`, `±`) can be attached to a specific move at a specific position, shown in the `Eval` column of the move breakdown panel.
+
+- stored in a `move_evaluations` table, keyed by `(position_key, move_san)` — same transposition-aware position key used by `positions` and `opening_positions`
+- edited via the **Edit move evaluations** expander below the move breakdown panel: one text input per candidate move, saved on change
+- clearing a field's text deletes the evaluation
 
 ## Opening reference data
 
@@ -335,6 +343,7 @@ These were considered or tried and decided against:
 - Import PGN games into a local SQLite database
 - Search and filter games in Streamlit
 - Explore openings position by position on a board, with transposition awareness and opening labels
+- Attach hand-entered evaluations to moves at a given position and edit them in-app
 - Click any game in a list to load it on a board and step through the moves
 - Detect duplicate, short, missing-moves, and not-my-game entries via dedicated review queues
 - Whitelist games with `[Keep "1"]` in the PGN to protect them from the short-games queue

@@ -211,25 +211,31 @@ def render_clickable_move_summary(
     ply_index: int,
     key_prefix: str,
     show_move_prefix: bool = True,
+    evaluations: dict[str, str] | None = None,
 ) -> str | None:
     if moves_df.empty:
         render_move_summary(moves_df)
         return None
 
+    evaluations = evaluations or {}
+
     _inject_breakdown_styles()
-    headers = st.columns([1.2, 0.8, 5.0])
+    headers = st.columns([1.2, 0.6, 0.8, 4.4])
     headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
-    headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
-    headers[2].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header breakdown-header--center'>Eval</div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[3].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
 
     for row in moves_df.itertuples(index=False):
-        columns = st.columns([1.2, 0.8, 5.0])
+        columns = st.columns([1.2, 0.6, 0.8, 4.4])
         move_label = format_move_label(row.move, ply_index) if show_move_prefix else str(row.move)
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
 
-        columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
-        columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
+        eval_text = evaluations.get(str(row.move), "")
+        columns[1].markdown(f"<div class='breakdown-text' style='text-align:center;'>{eval_text}</div>", unsafe_allow_html=True)
+        columns[2].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
+        columns[3].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
 
     return None
 

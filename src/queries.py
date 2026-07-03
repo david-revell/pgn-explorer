@@ -850,6 +850,18 @@ def load_next_moves_by_position(
     return pd.read_sql_query(query, connection, params={"position_key": position_key})
 
 
+def load_move_evaluations_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+) -> dict[str, str]:
+    position_key = normalize_fen(fen)
+    rows = connection.execute(
+        "SELECT move_san, evaluation FROM move_evaluations WHERE position_key = ?",
+        (position_key,),
+    ).fetchall()
+    return {str(row["move_san"]): str(row["evaluation"]) for row in rows}
+
+
 def load_opening_by_position(
     connection: sqlite3.Connection,
     fen: str,
