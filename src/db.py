@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS move_evaluations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     position_key TEXT NOT NULL,
     move_san TEXT NOT NULL,
-    evaluation TEXT NOT NULL,
+    evaluation TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
     UNIQUE (position_key, move_san)
 );
 """
@@ -171,11 +172,21 @@ def database_has_required_schema(connection: sqlite3.Connection) -> bool:
     }.issubset(positions_columns)
 
 
+def _ensure_move_evaluations_notes_column(connection: sqlite3.Connection) -> None:
+    columns = {
+        column_info["name"]
+        for column_info in connection.execute("PRAGMA table_info(move_evaluations)").fetchall()
+    }
+    if "notes" not in columns:
+        connection.execute("ALTER TABLE move_evaluations ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+
+
 def initialize_database(connection: sqlite3.Connection) -> None:
     connection.execute(CREATE_TABLE_SQL)
     connection.execute(CREATE_POSITIONS_TABLE_SQL)
     connection.execute(CREATE_OPENING_POSITIONS_TABLE_SQL)
     connection.execute(CREATE_MOVE_EVALUATIONS_TABLE_SQL)
+    _ensure_move_evaluations_notes_column(connection)
     if not database_has_required_schema(connection):
         connection.commit()
         return
@@ -361,8 +372,8 @@ def upsert_move_evaluation(
 ) -> None:
     connection.execute(
         """
-        INSERT INTO move_evaluations (position_key, move_san, evaluation)
-        VALUES (?, ?, ?)
+        INSERT INTO move_evaluations (position_key, move_san, evaluation, notes)
+        VALUES (?, ?, ?, '')
         ON CONFLICT (position_key, move_san) DO UPDATE SET evaluation = excluded.evaluation
         """,
         (position_key, move_san, evaluation),
@@ -370,11 +381,45 @@ def upsert_move_evaluation(
     connection.commit()
 
 
-def delete_move_evaluation(connection: sqlite3.Connection, position_key: str, move_san: str) -> None:
+def upsert_move_note(
+    connection: sqlite3.Connection,
+    position_key: str,
+    move_san: str,
+    notes: str,
+) -> None:
     connection.execute(
-        "DELETE FROM move_evaluations WHERE position_key = ? AND move_san = ?",
+        """
+        INSERT INTO move_evaluations (position_key, move_san, evaluation, notes)
+        VALUES (?, ?, '', ?)
+        ON CONFLICT (position_key, move_san) DO UPDATE SET notes = excluded.notes
+        """,
+        (position_key, move_san, notes),
+    )
+    connection.commit()
+
+
+def _delete_move_evaluation_row_if_blank(connection: sqlite3.Connection, position_key: str, move_san: str) -> None:
+    connection.execute(
+        "DELETE FROM move_evaluations WHERE position_key = ? AND move_san = ? AND evaluation = '' AND notes = ''",
         (position_key, move_san),
     )
+
+
+def delete_move_evaluation(connection: sqlite3.Connection, position_key: str, move_san: str) -> None:
+    connection.execute(
+        "UPDATE move_evaluations SET evaluation = '' WHERE position_key = ? AND move_san = ?",
+        (position_key, move_san),
+    )
+    _delete_move_evaluation_row_if_blank(connection, position_key, move_san)
+    connection.commit()
+
+
+def delete_move_note(connection: sqlite3.Connection, position_key: str, move_san: str) -> None:
+    connection.execute(
+        "UPDATE move_evaluations SET notes = '' WHERE position_key = ? AND move_san = ?",
+        (position_key, move_san),
+    )
+    _delete_move_evaluation_row_if_blank(connection, position_key, move_san)
     connection.commit()
 
 

@@ -16,10 +16,12 @@ from src.db import (
     database_has_required_schema,
     delete_games,
     delete_move_evaluation,
+    delete_move_note,
     get_connection,
     initialize_database,
     renumber_games,
     upsert_move_evaluation,
+    upsert_move_note,
 )
 from src.move_text import parse_move_text
 from src.pgn_source import delete_games_from_pgn, get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
@@ -30,6 +32,7 @@ from src.queries import (
     load_games,
     load_games_by_position,
     load_move_evaluations_by_position,
+    load_move_notes_by_position,
     load_move_summary_by_position,
     load_move_summary,
     load_next_moves_by_position,
@@ -228,6 +231,25 @@ def _on_move_evaluation_change(position_key: str, move_san: str, session_key: st
             upsert_move_evaluation(connection, position_key, move_san, value)
         else:
             delete_move_evaluation(connection, position_key, move_san)
+    st.cache_data.clear()
+
+
+@st.cache_data(show_spinner=False)
+def _load_move_notes_by_position_cached(
+    _db_version: int,
+    fen: str,
+) -> dict[str, str]:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_move_notes_by_position(connection, fen)
+
+
+def _on_move_note_change(position_key: str, move_san: str, session_key: str) -> None:
+    value = st.session_state[session_key].strip()
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        if value:
+            upsert_move_note(connection, position_key, move_san, value)
+        else:
+            delete_move_note(connection, position_key, move_san)
     st.cache_data.clear()
 
 
@@ -835,9 +857,11 @@ def render_opening_explorer(connection) -> None:
                     opening,
                 )
                 move_evaluations = _load_move_evaluations_by_position_cached(db_version, current_fen)
+                move_notes = _load_move_notes_by_position_cached(db_version, current_fen)
             else:
                 move_summary_df = pd.DataFrame(columns=["move", "games", "white", "draw", "black"])
                 move_evaluations = {}
+                move_notes = {}
 
             selected_move = render_clickable_move_summary(
                 move_summary_df,
@@ -845,21 +869,34 @@ def render_opening_explorer(connection) -> None:
                 key_prefix=f"position_move_{current_ply_index}_{color}_{player}_{result}_{opening}_{active_seed_fen}",
                 show_move_prefix=False,
                 evaluations=move_evaluations,
+                notes=move_notes,
             )
 
         if not move_summary_df.empty:
             position_key = normalize_fen(current_fen)
-            with st.expander("Edit move evaluations"):
+            with st.expander("Edit move evaluations and notes"):
                 for row in move_summary_df.itertuples(index=False):
                     move_san = str(row.move)
                     eval_key = f"move_eval_{position_key}_{move_san}"
+                    note_key = f"move_note_{position_key}_{move_san}"
                     if eval_key not in st.session_state:
                         st.session_state[eval_key] = move_evaluations.get(move_san, "")
+                    if note_key not in st.session_state:
+                        st.session_state[note_key] = move_notes.get(move_san, "")
                     st.text_input(
                         move_san,
                         key=eval_key,
                         on_change=_on_move_evaluation_change,
                         args=(position_key, move_san, eval_key),
+                    )
+                    st.text_area(
+                        f"{move_san} notes",
+                        key=note_key,
+                        height=68,
+                        label_visibility="collapsed",
+                        placeholder=f"Notes for {move_san}",
+                        on_change=_on_move_note_change,
+                        args=(position_key, move_san, note_key),
                     )
     entered_move_text = st.text_input(
         "Current line",

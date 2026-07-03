@@ -862,6 +862,18 @@ def load_move_evaluations_by_position(
     return {str(row["move_san"]): str(row["evaluation"]) for row in rows}
 
 
+def load_move_notes_by_position(
+    connection: sqlite3.Connection,
+    fen: str,
+) -> dict[str, str]:
+    position_key = normalize_fen(fen)
+    rows = connection.execute(
+        "SELECT move_san, notes FROM move_evaluations WHERE position_key = ?",
+        (position_key,),
+    ).fetchall()
+    return {str(row["move_san"]): str(row["notes"]) for row in rows}
+
+
 def load_opening_by_position(
     connection: sqlite3.Connection,
     fen: str,
