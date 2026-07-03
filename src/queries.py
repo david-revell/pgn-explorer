@@ -563,6 +563,86 @@ def load_player_summary(
     return pd.DataFrame(rows)
 
 
+def load_player_summary_by_position(
+    connection: sqlite3.Connection,
+    position_key: str,
+    usernames: str,
+    position_label: str = "Start",
+    player: str = "",
+    color: str = "Any",
+    result: str = "Any",
+    opening: str = "",
+) -> pd.DataFrame:
+    aliases = normalize_aliases(usernames)
+    if not aliases:
+        return pd.DataFrame()
+
+    def _summary(side: str) -> dict[str, int]:
+        params: dict[str, object] = {"position_key": position_key}
+        clauses: list[str] = ["p.position_key = :position_key"]
+
+        white_match = _build_alias_match_clause("white_norm", aliases, params, f"psbp_{side}_white")
+        black_match = _build_alias_match_clause("black_norm", aliases, params, f"psbp_{side}_black")
+
+        if player.strip():
+            side_color = {"white": "White", "black": "Black"}.get(side, "Any")
+            _append_player_clause(clauses, params, player, side_color)
+        else:
+            if side == "white":
+                clauses.append(white_match)
+            elif side == "black":
+                clauses.append(black_match)
+            else:
+                clauses.append(f"({white_match} OR {black_match})")
+
+        if result != "Any":
+            clauses.append("result = :result")
+            params["result"] = result
+
+        if opening and opening.strip():
+            term = opening.strip()
+            if _is_eco_input(term):
+                clauses.append("eco LIKE :eco_prefix")
+                params["eco_prefix"] = f"{term.upper()}%"
+            else:
+                clauses.append("LOWER(final_opening_name) LIKE :opening_name")
+                params["opening_name"] = f"%{term.lower()}%"
+
+        where_sql = "WHERE " + " AND ".join(clauses)
+        row = connection.execute(
+            f"""
+            SELECT
+                COUNT(*) AS games,
+                SUM(CASE WHEN result = '1-0' THEN 1 ELSE 0 END) AS white,
+                SUM(CASE WHEN result = '1/2-1/2' THEN 1 ELSE 0 END) AS draw,
+                SUM(CASE WHEN result = '0-1' THEN 1 ELSE 0 END) AS black
+            FROM games
+            INNER JOIN positions p ON p.game_id = games.id
+            {where_sql}
+            """,
+            params,
+        ).fetchone()
+        return {
+            "games": row["games"] or 0,
+            "white": row["white"] or 0,
+            "draw": row["draw"] or 0,
+            "black": row["black"] or 0,
+        }
+
+    rows: list[dict[str, int | str]] = []
+
+    if color in {"Any", "White"}:
+        rows.append({"Colour": "White", "Position": position_label, **_summary("white")})
+
+    if color in {"Any", "Black"}:
+        rows.append({"Colour": "Black", "Position": position_label, **_summary("black")})
+
+    if color == "Any":
+        rows.append({"Colour": "Total", "Position": position_label, **_summary("total")})
+
+    return pd.DataFrame(rows)
+
+
 def load_move_summary(
     connection: sqlite3.Connection,
     usernames: str,

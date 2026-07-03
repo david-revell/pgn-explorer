@@ -27,6 +27,7 @@ from src.queries import (
     load_openings_by_position_keys,
     load_pgn_export,
     load_player_summary,
+    load_player_summary_by_position,
     load_quality_counts,
 )
 from src.positions import build_position_history, build_position_key
@@ -73,6 +74,30 @@ def _load_player_summary_cached(
             connection=connection,
             usernames=usernames,
             move_sequence=move_sequence,
+            position_label=position_label,
+            player=player,
+            color=color,
+            result=result,
+            opening=opening,
+        )
+
+
+@st.cache_data(show_spinner=False)
+def _load_player_summary_by_position_cached(
+    _db_version: int,
+    position_key: str,
+    usernames: str,
+    position_label: str,
+    player: str,
+    color: str,
+    result: str,
+    opening: str,
+) -> pd.DataFrame:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_player_summary_by_position(
+            connection=connection,
+            position_key=position_key,
+            usernames=usernames,
             position_label=position_label,
             player=player,
             color=color,
@@ -685,11 +710,12 @@ def render_opening_explorer(connection) -> None:
         st.warning(f"Invalid FEN: {seed_fen_error}")
 
     if not active_seed_fen:
+        summary_position_key = build_position_history(move_sequence)[-1]
         render_player_summary(
-            _load_player_summary_cached(
+            _load_player_summary_by_position_cached(
                 db_version,
+                summary_position_key,
                 PLAYER_USERNAMES,
-                move_sequence,
                 position_label,
                 player,
                 color,

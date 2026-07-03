@@ -189,7 +189,7 @@ The opening explorer now runs on precomputed position data rather than only a li
 
 - each imported game stores one normalized position key per ply in a dedicated `positions` table
 - the key includes piece placement, side to move, castling rights, and only legally relevant en passant state
-- the move breakdown and matching-games sections both query by position, so the explorer is transposition-aware
+- the colour summary, move breakdown, and matching-games sections all query by position, so the explorer is fully transposition-aware
 - opening reference data is imported separately into `opening_positions`, allowing the current position to resolve to an opening name by position instead of by ECO alone
 - opening lookup falls back to the most recent named position in the current explored line, so the label persists after unnamed continuation moves
 
