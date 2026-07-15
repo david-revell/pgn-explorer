@@ -51,6 +51,7 @@ from src.viewer import (
     render_board,
     render_game_summary,
     render_game_with_board,
+    render_overall_record,
     render_player_summary,
     render_quality_summary,
 )
@@ -762,18 +763,20 @@ def render_opening_explorer(connection) -> None:
 
     if not active_seed_fen:
         summary_position_key = build_position_history(move_sequence)[-1]
-        render_player_summary(
-            _load_player_summary_by_position_cached(
-                db_version,
-                summary_position_key,
-                PLAYER_USERNAMES,
-                position_label,
-                player,
-                color,
-                result,
-                opening,
-            )
+        position_summary_df = _load_player_summary_by_position_cached(
+            db_version,
+            summary_position_key,
+            PLAYER_USERNAMES,
+            position_label,
+            player,
+            color,
+            result,
+            opening,
         )
+        render_player_summary(position_summary_df)
+        if color == "Any":
+            st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
+            render_overall_record(position_summary_df)
         st.markdown("<div style='height: 1.8rem;'></div>", unsafe_allow_html=True)
 
     move_side = "total" if color == "Any" else color.lower()

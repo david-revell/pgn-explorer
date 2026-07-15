@@ -138,6 +138,8 @@ The app currently has two pages:
 The `Opening explorer` currently includes:
 
 - a dynamic page title reflecting the active filters (e.g. `Games of peletis as White — Ruy Lopez`)
+- a colour breakdown table (White / Black / Total games, each with a White-Draw-Black result bar)
+- an Overall Record row below it, showing the player's own win/draw/loss (pastel green / grey / pastel red) regardless of colour played — shown only when the colour filter is `Any`, since it collapses to the same numbers as the single colour row otherwise
 - a board for the current position
 - an opening label showing `ECO + name`, with the reference opening PGN line directly underneath
 - a narrow control strip with rotate, back, and reset actions

@@ -88,6 +88,14 @@ def _inject_breakdown_styles() -> None:
             background: linear-gradient(180deg, #7b7b7b 0%, #4f4f4f 100%);
             color: #ffffff;
         }
+        .result-bar__win {
+            background: linear-gradient(180deg, #c7ecc0 0%, #a9e09c 100%);
+            color: #1c5e1c;
+        }
+        .result-bar__loss {
+            background: linear-gradient(180deg, #f7d3ce 0%, #f0ada5 100%);
+            color: #7a221f;
+        }
         .result-bar__segment {
             display: flex;
             align-items: center;
@@ -112,7 +120,7 @@ def _inject_breakdown_styles() -> None:
     )
 
 
-def _render_result_bar(white: int, draw: int, black: int) -> str:
+def _render_result_bar(white: int, draw: int, black: int, variant: str = "colour") -> str:
     games = white + draw + black
     white_pct = (white / games * 100) if games else 0
     draw_pct = (draw / games * 100) if games else 0
@@ -122,15 +130,19 @@ def _render_result_bar(white: int, draw: int, black: int) -> str:
     draw_label = _format_percent(draw_pct) if draw_pct >= 12 else ""
     black_label = _format_percent(black_pct) if black_pct >= 12 else ""
 
+    first_class, black_class = (
+        ("result-bar__win", "result-bar__loss") if variant == "record" else ("result-bar__white", "result-bar__black")
+    )
+
     return (
         "<div class='result-bar'>"
-        f"<div class='result-bar__segment result-bar__white' style='width:{white_pct:.3f}%'>"
+        f"<div class='result-bar__segment {first_class}' style='width:{white_pct:.3f}%'>"
         f"<span class='result-bar__label'>{white_label}</span>"
         "</div>"
         f"<div class='result-bar__segment result-bar__draw' style='width:{draw_pct:.3f}%'>"
         f"<span class='result-bar__label'>{draw_label}</span>"
         "</div>"
-        f"<div class='result-bar__segment result-bar__black' style='width:{black_pct:.3f}%'>"
+        f"<div class='result-bar__segment {black_class}' style='width:{black_pct:.3f}%'>"
         f"<span class='result-bar__label'>{black_label}</span>"
         "</div>"
         "</div>"
@@ -190,6 +202,32 @@ def render_player_summary(summary_df: pd.DataFrame) -> None:
         columns[0].markdown(f"<div class='breakdown-text'>{row.Colour}</div>", unsafe_allow_html=True)
         columns[1].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
         columns[2].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
+
+
+def render_overall_record(summary_df: pd.DataFrame) -> None:
+    white_rows = summary_df.loc[summary_df["Colour"] == "White"]
+    black_rows = summary_df.loc[summary_df["Colour"] == "Black"]
+    if white_rows.empty or black_rows.empty:
+        return
+
+    white_row = white_rows.iloc[0]
+    black_row = black_rows.iloc[0]
+
+    win = int(white_row["white"]) + int(black_row["black"])
+    draw = int(white_row["draw"]) + int(black_row["draw"])
+    loss = int(white_row["black"]) + int(black_row["white"])
+    games = win + draw + loss
+
+    _inject_breakdown_styles()
+    headers = st.columns([0.8, 0.9, 5.3])
+    headers[0].markdown("<div class='breakdown-header'>Record</div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header breakdown-header--center'>Win / Draw / Loss</div>", unsafe_allow_html=True)
+
+    columns = st.columns([0.8, 0.9, 5.3])
+    columns[0].markdown("<div class='breakdown-text'>Overall</div>", unsafe_allow_html=True)
+    columns[1].markdown(f"<div class='breakdown-games'>{games:,}</div>", unsafe_allow_html=True)
+    columns[2].markdown(_render_result_bar(win, draw, loss, variant="record"), unsafe_allow_html=True)
 
 
 def render_move_summary(moves_df: pd.DataFrame) -> None:
