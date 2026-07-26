@@ -198,12 +198,13 @@ The opening explorer now runs on precomputed position data rather than only a li
 
 ## Move evaluations and notes
 
-Hand-entered evaluations (e.g. `+0.3`, `=`, `±`) and free-text notes can be attached to a specific move at a specific position, shown in the `Eval` column and as a hover icon in the move breakdown panel.
+Hand-entered evaluations (e.g. `+0.3`, `=`, `±`) and free-text notes can be attached to a specific move at a specific position, shown in the `Eval` column and via a small indicator next to it in the breakdown panel.
 
 - both stored in a `move_evaluations` table, keyed by `(position_key, move_san)` — same transposition-aware position key used by `positions` and `opening_positions`
 - edited via the **Edit move evaluations and notes** expander below the move breakdown panel: one eval input and one notes text area per candidate move, saved on change
 - eval and notes are cleared independently — blanking one leaves the other intact; the underlying row is only deleted once both are empty
-- a move with a saved note shows a 📝 icon in its row; the full note appears on hover (desktop only — see [Limitations](#limitations))
+- a move with a saved note shows a small `ⓘ` marker between the move button and its eval; hovering it reveals the full note via the browser's native tooltip (desktop only — see [Limitations](#limitations))
+- the marker is a plain styled HTML element (same technique as the `Eval`/`Games` columns), not a Streamlit widget — Streamlit's own `help=` tooltip mechanism reparents any button that uses it into a different wrapper that doesn't carry the app's button theming, which broke the button's colour and caused text wrapping when tried on the move button directly
 - moves in the breakdown panel are never numbered, since the same position can be reached by transposition from different move orders — Black's candidate moves are shown with a `...` prefix (e.g. `...e6`) to distinguish them from White's (e.g. `e4`), matching standard PGN notation for a move shown out of full-move context
 
 ## Position notes

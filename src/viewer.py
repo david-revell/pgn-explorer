@@ -68,10 +68,11 @@ def _inject_breakdown_styles() -> None:
             text-align: right;
             white-space: nowrap;
         }
-        .breakdown-note-icon {
-            font-size: 1rem;
-            padding-top: 0.16rem;
+        .breakdown-note-marker {
+            font-size: 0.98rem;
+            padding-top: 0.18rem;
             text-align: center;
+            color: #6b8f6e;
             cursor: help;
         }
         .result-bar {
@@ -274,13 +275,13 @@ def render_clickable_move_summary(
     notes = notes or {}
 
     _inject_breakdown_styles()
-    column_widths = [1.2, 0.6, 1.1, 3.7, 0.3]
+    column_widths = [1.2, 0.2, 0.6, 1.1, 3.5]
     headers = st.columns(column_widths)
     headers[0].markdown("<div class='breakdown-header'>Move</div>", unsafe_allow_html=True)
-    headers[1].markdown("<div class='breakdown-header breakdown-header--center'>Eval</div>", unsafe_allow_html=True)
-    headers[2].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
-    headers[3].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
-    headers[4].markdown("<div class='breakdown-header'></div>", unsafe_allow_html=True)
+    headers[1].markdown("<div class='breakdown-header'></div>", unsafe_allow_html=True)
+    headers[2].markdown("<div class='breakdown-header breakdown-header--center'>Eval</div>", unsafe_allow_html=True)
+    headers[3].markdown("<div class='breakdown-header breakdown-header--right'>Games</div>", unsafe_allow_html=True)
+    headers[4].markdown("<div class='breakdown-header breakdown-header--center'>White / Draw / Black</div>", unsafe_allow_html=True)
 
     for row in moves_df.itertuples(index=False):
         columns = st.columns(column_widths)
@@ -292,18 +293,18 @@ def render_clickable_move_summary(
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
 
-        eval_text = html.escape(evaluations.get(str(row.move), ""))
-        columns[1].markdown(f"<div class='breakdown-text' style='text-align:center;'>{eval_text}</div>", unsafe_allow_html=True)
-        columns[2].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
-        columns[3].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
-
         note_text = notes.get(str(row.move), "")
         if note_text:
             escaped_note = html.escape(note_text)
-            columns[4].markdown(
-                f"<div class='breakdown-note-icon' title=\"{escaped_note}\">\U0001F4DD</div>",
+            columns[1].markdown(
+                f"<div class='breakdown-note-marker' title=\"{escaped_note}\">ⓘ</div>",
                 unsafe_allow_html=True,
             )
+
+        eval_text = html.escape(evaluations.get(str(row.move), ""))
+        columns[2].markdown(f"<div class='breakdown-text' style='text-align:center;'>{eval_text}</div>", unsafe_allow_html=True)
+        columns[3].markdown(f"<div class='breakdown-games'>{int(row.games):,}</div>", unsafe_allow_html=True)
+        columns[4].markdown(_render_result_bar(int(row.white), int(row.draw), int(row.black)), unsafe_allow_html=True)
 
     return None
 
