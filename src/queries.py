@@ -874,6 +874,18 @@ def load_move_notes_by_position(
     return {str(row["move_san"]): str(row["notes"]) for row in rows}
 
 
+def load_position_note(
+    connection: sqlite3.Connection,
+    fen: str,
+) -> str:
+    position_key = normalize_fen(fen)
+    row = connection.execute(
+        "SELECT notes FROM position_notes WHERE position_key = ?",
+        (position_key,),
+    ).fetchone()
+    return str(row["notes"]) if row is not None else ""
+
+
 def load_opening_by_position(
     connection: sqlite3.Connection,
     fen: str,

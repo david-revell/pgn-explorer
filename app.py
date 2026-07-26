@@ -17,11 +17,13 @@ from src.db import (
     delete_games,
     delete_move_evaluation,
     delete_move_note,
+    delete_position_note,
     get_connection,
     initialize_database,
     renumber_games,
     upsert_move_evaluation,
     upsert_move_note,
+    upsert_position_note,
 )
 from src.move_text import parse_move_text
 from src.pgn_source import delete_games_from_pgn, get_eco_by_game_number, load_pgn_source_session, save_eco_updates, validate_eco
@@ -41,6 +43,7 @@ from src.queries import (
     load_pgn_export,
     load_player_summary,
     load_player_summary_by_position,
+    load_position_note,
     load_quality_counts,
 )
 from src.positions import build_position_history, build_position_key, normalize_fen
@@ -255,6 +258,25 @@ def _on_move_note_change(position_key: str, move_san: str, session_key: str) -> 
 
 
 @st.cache_data(show_spinner=False)
+def _load_position_note_cached(
+    _db_version: int,
+    fen: str,
+) -> str:
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        return load_position_note(connection, fen)
+
+
+def _on_position_note_change(position_key: str, session_key: str) -> None:
+    value = st.session_state[session_key].strip()
+    with get_connection(DEFAULT_DB_PATH) as connection:
+        if value:
+            upsert_position_note(connection, position_key, value)
+        else:
+            delete_position_note(connection, position_key)
+    st.cache_data.clear()
+
+
+@st.cache_data(show_spinner=False)
 def _load_next_moves_by_position_cached(
     _db_version: int,
     fen: str,
@@ -340,6 +362,36 @@ def _render_opening_label(opening: dict[str, str] | None) -> None:
     if opening["pgn"].strip():
         opening_text = f"{opening_text}<br>{opening['pgn'].strip()}"
     st.caption(opening_text, unsafe_allow_html=True)
+
+
+_POSITION_NOTE_LINE_WIDTH = 100
+_POSITION_NOTE_MIN_HEIGHT = 90
+_POSITION_NOTE_MAX_HEIGHT = 600
+
+
+def _position_note_height(text: str) -> int:
+    wrapped_lines = sum(
+        max(1, (len(line) + _POSITION_NOTE_LINE_WIDTH - 1) // _POSITION_NOTE_LINE_WIDTH)
+        for line in (text.split("\n") if text else [""])
+    )
+    height = 45 + wrapped_lines * 24
+    return max(_POSITION_NOTE_MIN_HEIGHT, min(height, _POSITION_NOTE_MAX_HEIGHT))
+
+
+def _render_position_note(current_fen: str, db_version: int) -> None:
+    position_key = normalize_fen(current_fen)
+    note_key = f"position_note_{position_key}"
+    if note_key not in st.session_state:
+        st.session_state[note_key] = _load_position_note_cached(db_version, current_fen)
+
+    st.text_area(
+        "Position notes",
+        key=note_key,
+        height=_position_note_height(st.session_state[note_key]),
+        placeholder="This position doesn't have any notes yet — add some here.",
+        on_change=_on_position_note_change,
+        args=(position_key, note_key),
+    )
 
 
 def _get_pending_eco_updates() -> dict[int, str]:
@@ -825,6 +877,7 @@ def render_opening_explorer(connection) -> None:
                 st.session_state["opening_move_text_synced_sequence"] = None
                 st.rerun()
         _render_opening_label(board_opening)
+        _render_position_note(current_fen, db_version)
 
     with controls_column:
         st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)

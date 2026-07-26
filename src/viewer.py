@@ -20,6 +20,12 @@ def format_move_label(move: str, ply_index: int) -> str:
     return f"{move_number}... {move}"
 
 
+def format_move_label_no_number(move: str, ply_index: int) -> str:
+    if ply_index % 2 == 1:
+        return f"...{move}"
+    return str(move)
+
+
 def format_position_label(move_sequence: tuple[str, ...]) -> str:
     if not move_sequence:
         return ""
@@ -278,7 +284,11 @@ def render_clickable_move_summary(
 
     for row in moves_df.itertuples(index=False):
         columns = st.columns(column_widths)
-        move_label = format_move_label(row.move, ply_index) if show_move_prefix else str(row.move)
+        move_label = (
+            format_move_label(row.move, ply_index)
+            if show_move_prefix
+            else format_move_label_no_number(row.move, ply_index)
+        )
         if columns[0].button(move_label, key=f"{key_prefix}_{row.move}"):
             return str(row.move)
 

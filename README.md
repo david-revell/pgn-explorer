@@ -143,7 +143,8 @@ The `Opening explorer` currently includes:
 - a board for the current position
 - an opening label showing `ECO + name`, with the reference opening PGN line directly underneath
 - a narrow control strip with rotate, back, and reset actions
-- a position-based move breakdown panel beside the board, with editable per-move evaluation (e.g. `+0.3`, `=`, `±`) and notes columns
+- a position-based move breakdown panel beside the board, with editable per-move evaluation (e.g. `+0.3`, `=`, `±`) and notes
+- a free-text position notes box below the board/controls/move-breakdown row, separate from the per-move notes above
 - a position-based matching-games list under the board row
 - clicking a row in the matching-games list loads that game on a board with `<<` `<` `>` `>>` navigation and left/right arrow key support
 - an editable move text input under the board row, so the current line can be typed and resubmitted directly
@@ -197,12 +198,21 @@ The opening explorer now runs on precomputed position data rather than only a li
 
 ## Move evaluations and notes
 
-Hand-entered evaluations (e.g. `+0.3`, `=`, `±`) and free-text notes can be attached to a specific move at a specific position, shown in the `Eval` and `Notes` columns of the move breakdown panel.
+Hand-entered evaluations (e.g. `+0.3`, `=`, `±`) and free-text notes can be attached to a specific move at a specific position, shown in the `Eval` column and as a hover icon in the move breakdown panel.
 
 - both stored in a `move_evaluations` table, keyed by `(position_key, move_san)` — same transposition-aware position key used by `positions` and `opening_positions`
 - edited via the **Edit move evaluations and notes** expander below the move breakdown panel: one eval input and one notes text area per candidate move, saved on change
 - eval and notes are cleared independently — blanking one leaves the other intact; the underlying row is only deleted once both are empty
-- the `Notes` column truncates long text with an ellipsis and shows the full note on hover (desktop only — see [Limitations](#limitations))
+- a move with a saved note shows a 📝 icon in its row; the full note appears on hover (desktop only — see [Limitations](#limitations))
+- moves in the breakdown panel are never numbered, since the same position can be reached by transposition from different move orders — Black's candidate moves are shown with a `...` prefix (e.g. `...e6`) to distinguish them from White's (e.g. `e4`), matching standard PGN notation for a move shown out of full-move context
+
+## Position notes
+
+Separate from per-move notes, each position can also have one free-text note attached to the position itself (not to any particular move), shown as a full-width textarea underneath the opening label, below the board/controls/move-breakdown row.
+
+- stored in a `position_notes` table, keyed by the same transposition-aware position key as `move_evaluations`
+- saved on change; the underlying row is deleted once the note is blanked
+- the box shows placeholder text when the position has no note, and grows to fit the note's length otherwise
 
 ## Opening reference data
 
